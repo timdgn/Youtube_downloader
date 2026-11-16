@@ -172,7 +172,7 @@ def test_claim_job_uses_the_stale_claim_condition() -> None:
     assert kwargs["ConditionExpression"] == (
         "#state = :accepted OR (#state = :processing AND #updated_at < :stale) OR "
         "(#state = :failed AND #failure_retryable = :true AND "
-        "if_not_exists(#attempt, :zero) < :max)"
+        "(attribute_not_exists(#attempt) OR #attempt < :max))"
     )
     assert "if_not_exists(#attempt" in kwargs["UpdateExpression"]
     assert "+ :one" in kwargs["UpdateExpression"]
@@ -195,7 +195,7 @@ def test_claim_job_carries_the_retry_branch_and_its_values() -> None:
     names = kwargs["ExpressionAttributeNames"]
 
     assert "#state = :failed AND #failure_retryable = :true" in condition
-    assert "if_not_exists(#attempt, :zero) < :max" in condition
+    assert "attribute_not_exists(#attempt) OR #attempt < :max" in condition
     assert values[":failed"] == "failed"
     assert values[":true"] is True
     assert values[":max"] == 2

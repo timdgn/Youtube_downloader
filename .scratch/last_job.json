@@ -1,1 +1,1 @@
-{"error":{"code":"internal_error","message":"The request could not be completed; try again later.","retryable":true}}
+{"created_at":"2026-11-16T03:10:13Z","failure":null,"job_id":"mwior56bxvabej","produced_quality":null,"requested_quality":"720p","result":null,"state":"accepted","updated_at":"2026-11-16T03:10:13Z"}

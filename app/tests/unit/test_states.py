@@ -10,7 +10,7 @@ from ytdl.states import ACCEPTED, COMPLETED, FAILED, PROCESSING
 CLAIM_CONDITION = (
     "#state = :accepted OR (#state = :processing AND #updated_at < :stale) OR "
     "(#state = :failed AND #failure_retryable = :true AND "
-    "if_not_exists(#attempt, :zero) < :max)"
+    "(attribute_not_exists(#attempt) OR #attempt < :max))"
 )
 
 
@@ -108,3 +108,16 @@ def test_transition_condition_for_the_worker_outcome(target: str) -> None:
 def test_transition_condition_refuses_unknown_targets() -> None:
     with pytest.raises(ValueError):
         states.transition_condition("accepted")
+
+
+def test_condition_expressions_never_use_update_only_functions() -> None:
+    """DynamoDB rejects `if_not_exists` in a ConditionExpression (ValidationException).
+
+    Attempts are counted with a plain `attribute_not_exists(...) OR ... < :max`
+    instead. This test exists because mocks cannot catch that class of mistake.
+    """
+    for target in (states.PROCESSING, states.COMPLETED, states.FAILED):
+        condition = states.transition_condition(target)
+        assert "if_not_exists" not in condition
+        assert "ADD " not in condition
+        assert "SET " not in condition
