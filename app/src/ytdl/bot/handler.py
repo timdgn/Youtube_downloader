@@ -452,7 +452,7 @@ class Bot:
         elif command == "/empty":
             self._empty(update_id, sender, chat_id, rest)
         elif command == "/start":
-            self._simple(update_id, sender, chat_id, "/start", messages.START)
+            self._simple(update_id, sender, chat_id, "/start", messages.START_REPLY)
         elif command == "/help":
             self._simple(update_id, sender, chat_id, "/help", messages.HELP)
         elif command == "/info":

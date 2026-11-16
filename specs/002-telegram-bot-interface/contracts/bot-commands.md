@@ -51,7 +51,7 @@ and the storage model change together.
 
 | Command | Reply | Side effect |
 |---------|-------|-------------|
-| `/start` | `Hello. Send a YouTube link with a resolution word and I will fetch it.\n\nSend /help for the full command list.` | None |
+| `/start` | `Hello. Send a YouTube link with a resolution word and I will fetch it.\n\nSend /help for the full command list.` followed by the fixed help text, in one message | None |
 | `/list` | One numbered line per stored item, or `No videos are stored.` | None |
 | `/delete <n>` or `/delete <name>` | `Deleted <n>: <name>.` / `Deleted <name>.` / `No item is numbered <n>.` / `No item is named <name>.` | Object deleted, item marked deleted |
 | `/empty` | `This will delete N items. Reply "/empty confirm" to proceed.` | None until confirmed |

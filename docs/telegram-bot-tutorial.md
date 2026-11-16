@@ -111,7 +111,8 @@ A non-empty `last_error_message` means Telegram cannot deliver to that address.
 
 Open your bot in Telegram and press **Start**, or send `/start`.
 
-Expected: a greeting that points at `/help`. Then send `/help`:
+Expected: the greeting, then the full command list, in one message. `/help` sends the
+same list when you need it again.
 
 ```text
 📚 Available commands:

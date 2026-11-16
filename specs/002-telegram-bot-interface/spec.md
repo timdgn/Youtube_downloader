@@ -169,7 +169,8 @@ Example: "https://www.youtube.com/watch?v=example medium"
 - **FR-008**: When a request completes, the bot MUST post a download link in the originating chat, MUST state the link's expiry time, and MUST tell the operator how to obtain a fresh link. Download links MUST live 60 minutes or less.
 - **FR-009**: The bot MUST never send media bytes through the chat. It delivers links only, so file size is limited by the service's own limits, not by the chat platform's file-transfer limits.
 - **FR-010**: The `/help` reply MUST contain the help text fixed in the Command Surface section, complete and unaltered in wording, order, and example.
-- **FR-011**: The bot MUST answer `/start` with a greeting that points to `/help`.
+- **FR-011**: The bot MUST answer `/start` with a greeting followed by the fixed help
+  text, in one message, so a first-time operator sees the commands without asking for them.
 - **FR-012**: The `/list` reply MUST show, for each of the operator's stored items, a name unique within that operator's library, the source video, the quality actually produced, the size, the age, and the days remaining before automatic deletion, and MUST split across messages, without loss or duplication, when one message cannot hold the list.
 - **FR-013**: `/delete` MUST accept either the number printed beside an item by `/list` or
   its name, MUST delete only the item so identified, MUST confirm the deletion by name, and

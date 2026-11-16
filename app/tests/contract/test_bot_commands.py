@@ -123,7 +123,7 @@ def _jobs(dynamo: FakeDynamoRepository) -> list[dict]:
 @pytest.mark.parametrize(
     ("text", "expected", "outcome"),
     [
-        pytest.param("/start", messages.START, "command:start", id="start"),
+        pytest.param("/start", messages.START_REPLY, "command:start", id="start"),
         pytest.param("/help", messages.HELP, "command:help", id="help"),
     ],
 )

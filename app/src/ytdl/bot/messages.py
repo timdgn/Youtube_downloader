@@ -92,6 +92,9 @@ START = (
     "\n"
     "Send /help for the full command list."
 )
+# /start answers with the greeting and the fixed block, so a first-time operator
+# sees the commands without typing /help. One message, one notification.
+START_REPLY = START + "\n\n" + HELP
 TEST_STARTED = "Pipeline test started."
 INFO = (
     "yt-dlp {version}\n"

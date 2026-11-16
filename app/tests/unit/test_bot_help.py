@@ -66,6 +66,17 @@ def test_start_points_at_help() -> None:
     assert "/help" in messages.START
 
 
+def test_start_answers_with_the_greeting_and_the_fixed_block() -> None:
+    assert messages.START_REPLY == messages.START + "\n\n" + messages.HELP
+    assert messages.START_REPLY.endswith(messages.HELP)
+    assert messages.START_REPLY.count(messages.HELP) == 1
+
+
+def test_start_is_one_message_under_the_telegram_limit() -> None:
+    assert len(messages.START_REPLY) <= 3500
+    assert messages.paginate(messages.START_REPLY) == [messages.START_REPLY]
+
+
 def test_every_command_in_the_help_text_is_a_real_command() -> None:
     for word in ("/start", "/list", "/delete", "/empty", "/history", "/info", "/test", "/help"):
         assert f"\n{word} " in messages.HELP
