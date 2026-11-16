@@ -180,6 +180,7 @@ def test_completed_job_presigns_with_the_documented_filename_and_ttl() -> None:
         "key": keys.media_key(JOB_ID, VIDEO_ID),
         "filename": f"{VIDEO_ID}-{JOB_ID}.mp4",
         "expires_in": 3600,
+        "content_type": "video/mp4",
     }
 
 
@@ -302,3 +303,36 @@ def test_repeated_reads_return_identical_output() -> None:
     second = _get(api)
 
     assert first == second
+
+
+# --- the deleted overlay -----------------------------------------------------
+
+
+def test_a_deleted_job_is_reported_as_expired_even_when_the_object_exists() -> None:
+    dynamo, media, queue = FakeDynamoRepository(), FakeMediaStore(), FakeJobQueue()
+    _seed_job(
+        dynamo,
+        **_completed(media),
+        deleted_at="2026-11-15T14:05:00Z",
+    )
+
+    response = _get(_api(dynamo, media, queue))
+
+    assert response["statusCode"] == 200
+    body = _body(response)
+    assert body["state"] == states.COMPLETED
+    assert body["result"]["status"] == "expired"
+    assert body["result"]["download_url"] is None
+    assert body["result"]["expires_at"] is None
+    assert body["result"]["size_bytes"] == len(MEDIA)
+
+
+def test_a_deleted_job_does_not_consult_s3() -> None:
+    dynamo, media, queue = FakeDynamoRepository(), FakeMediaStore(), FakeJobQueue()
+    _seed_job(dynamo, **_completed(media), deleted_at="2026-11-15T14:05:00Z")
+    media.objects.clear()
+
+    response = _get(_api(dynamo, media, queue))
+
+    assert _body(response)["result"]["status"] == "expired"
+    assert [call[0] for call in media.calls] == []

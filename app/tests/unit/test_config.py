@@ -6,7 +6,7 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from ytdl.config import Config, ConfigError, load_config
+from ytdl.config import Config, ConfigError, load_config, require_bot_config
 
 BASE_ENV = {
     "ENVIRONMENT": "dev",
@@ -166,3 +166,76 @@ def test_load_config_reads_process_environment(monkeypatch: pytest.MonkeyPatch) 
 
     assert config.environment == "dev"
     assert config.max_height == 1080
+
+
+# --- bot settings (data-model.md "Bot Configuration") -----------------------
+
+BOT_VARIABLES = (
+    ("TELEGRAM_TOKEN_PARAM", "telegram_token_param"),
+    ("TELEGRAM_WEBHOOK_SECRET_PARAM", "telegram_webhook_secret_param"),
+    ("TELEGRAM_APPROVED_PARAM", "telegram_approved_param"),
+    ("TELEGRAM_WEBHOOK_URL", "telegram_webhook_url"),
+    ("TELEGRAM_TEST_VIDEO_ID", "telegram_test_video_id"),
+    ("JOB_EVENTS_TOPIC_ARN", "job_events_topic_arn"),
+    ("YTDLP_VERSION", "ytdlp_version"),
+)
+
+
+@pytest.mark.parametrize(("variable", "attribute"), BOT_VARIABLES)
+def test_bot_settings_are_none_when_unset(variable: str, attribute: str) -> None:
+    """The api and worker functions must still build without any bot setting."""
+    assert getattr(load_config(dict(BASE_ENV)), attribute) is None
+
+    blank = dict(BASE_ENV)
+    blank[variable] = ""
+    assert getattr(load_config(blank), attribute) is None
+
+    configured = dict(BASE_ENV)
+    configured[variable] = "configured"
+    assert getattr(load_config(configured), attribute) == "configured"
+
+
+def test_default_tier_defaults_to_high() -> None:
+    assert load_config(dict(BASE_ENV)).telegram_default_tier == "high"
+
+
+@pytest.mark.parametrize("word", ["low", "medium", "high", "veryhigh", "mp3"])
+def test_default_tier_accepts_the_five_words(word: str) -> None:
+    env = dict(BASE_ENV)
+    env["TELEGRAM_DEFAULT_TIER"] = word
+
+    assert load_config(env).telegram_default_tier == word
+
+
+@pytest.mark.parametrize("word", ["hq", "", "  ", "HIGH", "2160p"])
+def test_default_tier_rejects_anything_else(word: str) -> None:
+    env = dict(BASE_ENV)
+    env["TELEGRAM_DEFAULT_TIER"] = word
+
+    with pytest.raises(ConfigError) as excinfo:
+        load_config(env)
+
+    assert excinfo.value.variable == "TELEGRAM_DEFAULT_TIER"
+
+
+def test_require_bot_config_names_the_missing_variable() -> None:
+    env = {"ENVIRONMENT": "dev"}
+    env.update({name: "configured" for name, _attribute in BOT_VARIABLES})
+    env.update(BASE_ENV)
+    del env["TELEGRAM_WEBHOOK_URL"]
+
+    with pytest.raises(ConfigError) as excinfo:
+        require_bot_config(load_config(env))
+
+    assert excinfo.value.variable == "TELEGRAM_WEBHOOK_URL"
+    assert "TELEGRAM_WEBHOOK_URL" in str(excinfo.value)
+
+
+def test_require_bot_config_returns_the_complete_config() -> None:
+    env = {"ENVIRONMENT": "dev"}
+    env.update({name: "configured" for name, _attribute in BOT_VARIABLES})
+    env.update(BASE_ENV)
+
+    config = require_bot_config(load_config(env))
+
+    assert config.telegram_webhook_url == "configured"

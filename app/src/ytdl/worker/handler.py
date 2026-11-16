@@ -31,11 +31,15 @@ from ytdl.worker.pipeline import (
     LimitExceeded,
     process_job,
 )
-from ytdl.worker.remux import probe_output, remux_to_mp4
+from ytdl.worker.remux import convert_to_mp3, probe_output, remux_to_mp4
 
 SUPPORTED_VERSION = 1
 FUNCTION_NAME = "worker"
 IDEMPOTENCY_PRECHECK = "idempotency_precheck"
+
+_AUDIO = "audio"
+_MP3 = "mp3"
+_MP4 = "mp4"
 
 _COOKIES_PATH = "/tmp/cookies.txt"
 _COOKIES_KEY = "cookies.txt"
@@ -62,18 +66,22 @@ class Worker:
         extractor: Any,
         config: Config,
         remux_fn: Callable[[str, str], None] = remux_to_mp4,
+        mp3_fn: Callable[[str, str], None] = convert_to_mp3,
         probe_fn: Callable[[str], dict[str, Any]] = probe_output,
         logger: Logger | None = None,
         workdir_factory: Callable[[], str] | None = None,
+        publish: Callable[[str, str], None] | None = None,
     ) -> None:
         self._repo = repo
         self._store = store
         self._extractor = extractor
         self._config = config
         self._remux_fn = remux_fn
+        self._mp3_fn = mp3_fn
         self._probe_fn = probe_fn
         self._logger = logger
         self._workdir_factory = workdir_factory or _default_workdir
+        self._publish = publish
 
     def handle(self, event: dict[str, Any]) -> dict[str, list[dict[str, str]]]:
         failures: list[dict[str, str]] = []
@@ -116,6 +124,7 @@ class Worker:
         media = keys.media_key(
             job_id,
             str(claimed.get("video_id") or message.get("video_id") or ""),
+            extension=_extension(claimed),
         )
         existing = self._store.head_object(media)
         if existing is not None and _size(existing) > 0:
@@ -130,9 +139,11 @@ class Worker:
                 config=self._config,
                 workdir=workdir,
                 remux_fn=self._remux_fn,
+                mp3_fn=self._mp3_fn,
                 probe_fn=self._probe_fn,
             )
             self._repo.complete_job(job_id, fields, _iso(_now_epoch()))
+            self._notify(claimed, "job_completed")
             self._log("job_completed", **_audit(claimed, fields, states.COMPLETED))
             return False
         except Exception as error:
@@ -157,6 +168,7 @@ class Worker:
             media_size_bytes=fields["media_size_bytes"],
         )
         self._repo.complete_job(str(job["job_id"]), fields, _iso(now_epoch))
+        self._notify(job, "job_completed")
         self._log("job_completed", **_audit(job, fields, states.COMPLETED))
         return False
 
@@ -187,7 +199,22 @@ class Worker:
             # The failure could not be recorded, so a retry still has work to do.
             return True
 
-        return failure.retryable and _attempt(job) < states.MAX_ATTEMPTS
+        retry = failure.retryable and _attempt(job) < states.MAX_ATTEMPTS
+        if not retry:
+            self._notify(job, "job_failed")
+        return retry
+
+    def _notify(self, job: dict[str, Any], event: str) -> None:
+        """Publish a terminal event; a publish failure never changes the outcome."""
+        if self._publish is None:
+            return
+        chat_id = job.get("chat_id")
+        if chat_id is None or (isinstance(chat_id, str) and not chat_id.strip()):
+            return
+        try:
+            self._publish(event, str(job["job_id"]))
+        except Exception as error:
+            self._log_error("job_event_publish_failed", type(error).__name__)
 
     def _message(self, record: dict[str, Any]) -> dict[str, Any] | None:
         """Return the message, or None for anything that cannot be trusted."""
@@ -232,7 +259,25 @@ def _build_worker() -> Worker:
         extractor,
         config,
         logger=logger,
+        publish=_job_publisher(config),
     )
+
+
+def _job_publisher(config: Config) -> Callable[[str, str], None] | None:
+    """Build the SNS publisher once per cold start, or None when unconfigured."""
+    topic_arn = config.job_events_topic_arn
+    if not topic_arn:
+        return None
+    client = boto3.client("sns")
+
+    def publish(event: str, job_id: str) -> None:
+        body = {"version": SUPPORTED_VERSION, "event": event, "job_id": job_id}
+        client.publish(
+            TopicArn=topic_arn,
+            Message=json.dumps(body, separators=(",", ":")),
+        )
+
+    return publish
 
 
 def _cookies_hook(store: Any, config: Config, logger: StructuredLogger) -> str | None:
@@ -314,6 +359,11 @@ def _needs_work(job: dict[str, Any]) -> bool:
     return True
 
 
+def _extension(job: dict[str, Any]) -> str:
+    """The media key extension, derived from the job's media kind."""
+    return _MP3 if job.get("media_kind") == _AUDIO else _MP4
+
+
 def _existing_fields(
     media: str,
     head: dict[str, Any],
@@ -321,7 +371,7 @@ def _existing_fields(
     started: float,
 ) -> dict[str, Any]:
     """Completion fields for an object that already exists with a non-zero size."""
-    height = _metadata_height(head)
+    audio, height = _existing_media(head)
     fields: dict[str, Any] = {
         "media_key": media,
         "media_size_bytes": _size(head),
@@ -329,12 +379,23 @@ def _existing_fields(
         "media_expires_at": now_epoch + MEDIA_RETENTION_SECONDS,
         "processing_ms": max(0, int((time.monotonic() - started) * 1000)),
     }
+    if audio:
+        fields["produced_quality"] = _MP3
+        return fields
     label = quality.label_for(height)
     if height is not None:
         fields["produced_height"] = height
     if label is not None:
         fields["produced_quality"] = label
     return fields
+
+
+def _existing_media(head: dict[str, Any]) -> tuple[bool, int | None]:
+    """Whether the stored object is audio, and its produced height when it is video."""
+    metadata = head.get("metadata")
+    if isinstance(metadata, dict) and metadata.get("media-kind") == _AUDIO:
+        return True, None
+    return False, _metadata_height(head)
 
 
 def _metadata_height(head: dict[str, Any]) -> int | None:

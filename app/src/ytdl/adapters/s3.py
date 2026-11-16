@@ -63,7 +63,13 @@ class MediaStore:
             "metadata": dict(metadata) if isinstance(metadata, dict) else {},
         }
 
-    def presign_get(self, key: str, filename: str, expires_in: int) -> str:
+    def presign_get(
+        self,
+        key: str,
+        filename: str,
+        expires_in: int,
+        content_type: str = "video/mp4",
+    ) -> str:
         """Sign a GetObject URL that downloads as ``filename`` for ``expires_in``."""
         return self._client.generate_presigned_url(
             ClientMethod="get_object",
@@ -71,10 +77,19 @@ class MediaStore:
                 "Bucket": self._bucket,
                 "Key": key,
                 "ResponseContentDisposition": f'attachment; filename="{filename}"',
-                "ResponseContentType": "video/mp4",
+                "ResponseContentType": content_type,
             },
             ExpiresIn=expires_in,
         )
+
+    def delete_object(self, key: str) -> None:
+        """Remove one media object; an already-absent key is not an error."""
+        try:
+            self._client.delete_object(Bucket=self._bucket, Key=key)
+        except ClientError as error:
+            if error.response.get("Error", {}).get("Code") in _MISSING_CODES:
+                return
+            raise
 
     def get_text(self, key: str) -> str:
         """Read a small UTF-8 object, used only for config/cookies.txt."""

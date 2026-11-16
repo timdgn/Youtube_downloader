@@ -53,6 +53,8 @@ RUN curl -fsSL -o deno.zip \
 FROM ${PYTHON_IMAGE} AS api
 ENV PYTHONPATH=/var/task/src
 COPY --from=deps ${LAMBDA_TASK_ROOT}/ ${LAMBDA_TASK_ROOT}/
+# The one source of the extraction version; /info reports what the worker runs.
+COPY ytdlp-version.txt ${LAMBDA_TASK_ROOT}/ytdlp-version.txt
 COPY src/ ${LAMBDA_TASK_ROOT}/src/
 CMD ["ytdl.api.handler.handler"]
 
@@ -64,11 +66,15 @@ ENV PYTHONPATH=/var/task/src
 COPY --from=deps ${LAMBDA_TASK_ROOT}/ ${LAMBDA_TASK_ROOT}/
 COPY --from=media-tools /opt/ffmpeg/bin/ffmpeg /opt/ffmpeg/bin/ffprobe /usr/local/bin/
 COPY --from=media-tools /opt/deno/deno /usr/local/bin/deno
+# The version is read from one file, so the image and the plan cannot drift
+# apart (research D-13).
+COPY ytdlp-version.txt /tmp/ytdlp-version.txt
 RUN chmod +x /usr/local/bin/ffmpeg /usr/local/bin/ffprobe /usr/local/bin/deno \
- && python -m pip install --no-cache-dir "yt-dlp[default]==2026.10.26" \
+ && python -m pip install --no-cache-dir "yt-dlp[default]==$(cat /tmp/ytdlp-version.txt)" \
  && python -m pip show yt-dlp-ejs | grep -E '^(Name|Version):' \
  && yt-dlp --version \
  && ffmpeg -version | head -n 1 \
  && deno --version | head -n 1
+COPY ytdlp-version.txt ${LAMBDA_TASK_ROOT}/ytdlp-version.txt
 COPY src/ ${LAMBDA_TASK_ROOT}/src/
 CMD ["ytdl.worker.handler.handler"]

@@ -12,16 +12,15 @@ from urllib.parse import unquote
 
 import boto3
 
-from ytdl import keys, quality
+from ytdl import keys, quality, submissions
 from ytdl.adapters.dynamo import DynamoRepository, RateLimited
 from ytdl.adapters.s3 import MediaStore, s3_client
 from ytdl.adapters.sqs import JobQueue
 from ytdl.api import routes
 from ytdl.auth import TokenProvider, Unauthorized, check_bearer
 from ytdl.config import Config, load_config
-from ytdl.ids import new_job_id
 from ytdl.logging import StructuredLogger, get_logger
-from ytdl.states import ACCEPTED, COMPLETED, FAILED
+from ytdl.states import COMPLETED, FAILED
 from ytdl.urls import InvalidVideoURL, parse_video_url
 
 CONTENT_TYPE_MEDIA = "video/mp4"
@@ -117,26 +116,33 @@ class Api:
         moment = self._now()
         now_epoch = int(moment.timestamp())
         created_at = _iso(moment)
-        job_id = new_job_id()
-        job: dict[str, Any] = {
-            "job_id": job_id,
-            "state": ACCEPTED,
-            "created_at": created_at,
-            "updated_at": created_at,
-            "source_host": reference.host,
-            "video_id": reference.video_id,
-        }
-        if requested_quality is not None:
-            job["requested_quality"] = requested_quality
-            job["requested_height"] = requested_height
+        job = submissions.build_job(
+            reference,
+            created_at,
+            requested_quality,
+            requested_height,
+        )
 
         rate_pk = keys.rate_key(keys.rate_window(now_epoch), token)
+        message = {
+            "version": 1,
+            "job_id": job["job_id"],
+            "video_id": reference.video_id,
+            "source_host": reference.host,
+            "requested_height": requested_height if requested_quality is not None else None,
+            "enqueued_at": created_at,
+        }
         try:
-            self._repo.create_job_with_rate_increment(
+            submissions.submit(
+                self._repo,
+                self._queue,
+                self._config,
                 job,
                 rate_pk,
                 self._config.rate_limit_per_hour,
                 now_epoch,
+                None,
+                message,
             )
         except RateLimited as limited:
             retry_after = _iso_epoch(limited.retry_at_epoch)
@@ -151,17 +157,6 @@ class Api:
                 ),
                 {"Retry-After": str(seconds)},
             )
-
-        message = {
-            "version": 1,
-            "job_id": job_id,
-            "video_id": reference.video_id,
-            "source_host": reference.host,
-            "requested_height": requested_height if requested_quality is not None else None,
-            "enqueued_at": created_at,
-        }
-        # A queue failure propagates to `handle`, which logs it and answers 500.
-        self._queue.enqueue(message)
 
         return routes.response(202, routes.accepted_body(job))
 
@@ -184,6 +179,10 @@ class Api:
             return _error("not_found", 404)
         if job.get("state") != COMPLETED:
             return _error("not_completed", 409)
+        # A file deleted through the bot is gone even if its object is still
+        # readable for a moment, so the answer never depends on S3 timing.
+        if job.get("deleted_at") is not None:
+            return _error("result_expired", 410)
 
         moment = self._now()
         media_key, head = self._media(job)
@@ -201,6 +200,15 @@ class Api:
             return None
 
         moment = self._now()
+        if job.get("deleted_at") is not None:
+            return {
+                "status": "expired",
+                "download_url": None,
+                "expires_at": None,
+                "size_bytes": job.get("media_size_bytes"),
+                "content_type": CONTENT_TYPE_MEDIA,
+            }
+
         media_key, head = self._media(job)
         if _inside_retention(job, head, moment):
             return {

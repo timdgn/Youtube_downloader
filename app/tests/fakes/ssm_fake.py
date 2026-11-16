@@ -33,3 +33,23 @@ class FakeSsmClient:
                 "Value": self.parameters[Name],
             }
         }
+
+    def get_parameters(self, *, Names: list[str], WithDecryption: bool = False) -> dict[str, Any]:
+        """Return the found parameters and name the missing ones, as SSM does."""
+        self.calls.append(
+            ("get_parameters", {"Names": list(Names), "WithDecryption": WithDecryption})
+        )
+        found = [
+            {
+                "Name": name,
+                "Type": "SecureString",
+                "Value": self.parameters[name],
+            }
+            for name in Names
+            if name in self.parameters
+        ]
+        missing = [name for name in Names if name not in self.parameters]
+        response: dict[str, Any] = {"Parameters": found}
+        if missing:
+            response["InvalidParameters"] = missing
+        return response

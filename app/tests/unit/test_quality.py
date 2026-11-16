@@ -15,12 +15,13 @@ from ytdl.quality import (
 
 
 def test_qualities_are_the_accepted_labels() -> None:
-    assert QUALITIES == ("360p", "480p", "720p", "1080p", "1440p", "2160p")
+    assert QUALITIES == ("240p", "360p", "480p", "720p", "1080p", "1440p", "2160p")
 
 
 @pytest.mark.parametrize(
     ("label", "height"),
     [
+        pytest.param("240p", 240, id="240p"),
         pytest.param("360p", 360, id="360p"),
         pytest.param("480p", 480, id="480p"),
         pytest.param("720p", 720, id="720p"),
@@ -59,6 +60,7 @@ def test_resolve_absent_returns_the_ceiling() -> None:
 @pytest.mark.parametrize(
     ("requested", "ceiling", "expected"),
     [
+        pytest.param("240p", 1080, 240, id="240-under-1080"),
         pytest.param("360p", 1080, 360, id="360-under-1080"),
         pytest.param("480p", 1080, 480, id="480-under-1080"),
         pytest.param("720p", 1080, 720, id="720-under-1080"),

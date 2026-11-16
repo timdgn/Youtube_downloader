@@ -6,9 +6,10 @@ actually produced, and neither needs a network or a clock.
 
 from __future__ import annotations
 
-# 1440p and 2160p are accepted so that FR-011 can cap them to the ceiling
-# instead of failing them (US3 acceptance scenario 4). They are never produced.
-QUALITIES: tuple[str, ...] = ("360p", "480p", "720p", "1080p", "1440p", "2160p")
+# 240p is the `low` tier's ceiling (research D-07). 1440p and 2160p are accepted so
+# that FR-011 can cap them to the ceiling instead of failing them (US3 acceptance
+# scenario 4). They are never produced.
+QUALITIES: tuple[str, ...] = ("240p", "360p", "480p", "720p", "1080p", "1440p", "2160p")
 
 _HEIGHTS: dict[str, int] = {label: int(label.removesuffix("p")) for label in QUALITIES}
 _LABELS: dict[int, str] = {height: label for label, height in _HEIGHTS.items()}

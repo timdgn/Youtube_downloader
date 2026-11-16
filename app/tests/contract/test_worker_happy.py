@@ -169,16 +169,23 @@ def test_happy_path_downloads_uploads_and_completes() -> None:
     upload = media.writes[0][1]
     assert upload["key"] == MEDIA_KEY
     assert upload["content_type"] == "video/mp4"
-    assert set(upload["metadata"]) == {"job-id", "produced-height", "source-video-id"}
+    assert set(upload["metadata"]) == {
+        "job-id",
+        "produced-height",
+        "source-video-id",
+        "media-kind",
+    }
     assert upload["metadata"]["job-id"] == JOB_ID
     assert upload["metadata"]["produced-height"] == "1080"
     assert upload["metadata"]["source-video-id"] == VIDEO_ID
+    assert upload["metadata"]["media-kind"] == "video"
     assert upload["size"] == len(CONTENT)
 
     completions = _call(dynamo, "complete_job")
     assert len(completions) == 1
     assert completions[0]["job_id"] == JOB_ID
     fields = completions[0]["fields"]
+    assert fields["video_title"] == "fixture video"
     assert fields["media_key"] == MEDIA_KEY
     assert fields["media_size_bytes"] == len(CONTENT)
     assert fields["media_expires_at"] == fields["media_created_at"] + 604_800

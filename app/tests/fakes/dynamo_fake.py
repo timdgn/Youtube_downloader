@@ -8,9 +8,11 @@ from typing import Any
 
 from ytdl import keys, states
 from ytdl.adapters.dynamo import (
+    INTERACTION_TTL_SECONDS,
     RETRY_AFTER_SECONDS,
     TTL_AFTER_EXPIRY_SECONDS,
     TTL_UNCOMPLETED_SECONDS,
+    DuplicateUpdate,
     RateLimited,
 )
 
@@ -21,6 +23,8 @@ _WRITE_METHODS = frozenset(
         "claim_job",
         "complete_job",
         "fail_job",
+        "put_interaction",
+        "mark_deleted",
     }
 )
 
@@ -40,7 +44,12 @@ class FakeDynamoRepository:
         return [call for call in self.calls if call[0] in _WRITE_METHODS]
 
     def create_job_with_rate_increment(
-        self, job: dict[str, Any], rate_pk: str, limit: int, now_epoch: int
+        self,
+        job: dict[str, Any],
+        rate_pk: str,
+        limit: int,
+        now_epoch: int,
+        interaction: dict[str, Any] | None = None,
     ) -> None:
         self.calls.append(
             (
@@ -50,9 +59,14 @@ class FakeDynamoRepository:
                     "rate_pk": rate_pk,
                     "limit": limit,
                     "now_epoch": now_epoch,
+                    "interaction": deepcopy(interaction),
                 },
             )
         )
+        if interaction is not None:
+            prepared = _interaction(interaction)
+            if prepared["pk"] in self.items:
+                raise DuplicateUpdate
         count = self.rate_counts.get(rate_pk, 0)
         if count >= limit:
             window_start = keys.rate_window(now_epoch)
@@ -62,11 +76,48 @@ class FakeDynamoRepository:
         item["pk"] = "JOB#" + job["job_id"]
         item.setdefault("ttl", now_epoch + TTL_UNCOMPLETED_SECONDS)
         self.items[item["pk"]] = item
+        if interaction is not None:
+            self.items[prepared["pk"]] = prepared
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         self.calls.append(("get_job", {"job_id": job_id}))
         item = self.items.get("JOB#" + job_id)
         return _public(item) if item else None
+
+    def get_jobs(self, job_ids: list[str]) -> list[dict[str, Any]]:
+        self.calls.append(("get_jobs", {"job_ids": list(job_ids)}))
+        return [
+            _public(self.items["JOB#" + job_id])
+            for job_id in job_ids
+            if "JOB#" + job_id in self.items
+        ]
+
+    def query_owner_jobs(self, owner_key: str, limit: int) -> list[dict[str, Any]]:
+        self.calls.append(("query_owner_jobs", {"owner_key": owner_key, "limit": limit}))
+        return [_public(item) for item in self._owned(owner_key, limit)]
+
+    def query_interactions(self, owner_key: str, limit: int = 10) -> list[dict[str, Any]]:
+        self.calls.append(("query_interactions", {"owner_key": owner_key, "limit": limit}))
+        return [deepcopy(item) for item in self._owned(owner_key, limit)]
+
+    def put_interaction(self, item: dict[str, Any]) -> None:
+        self.calls.append(("put_interaction", {"item": deepcopy(item)}))
+        prepared = _interaction(item)
+        self.items[prepared["pk"]] = prepared
+
+    def mark_deleted(self, job_id: str, now_iso: str) -> None:
+        self.calls.append(("mark_deleted", {"job_id": job_id, "now_iso": now_iso}))
+        item = self.items.get("JOB#" + job_id)
+        if item is None or item.get("state") != states.COMPLETED:
+            return
+        if item.get("deleted_at") is not None:
+            return
+        item["deleted_at"] = now_iso
+
+    def _owned(self, owner_key: str, limit: int) -> list[dict[str, Any]]:
+        owned = [item for item in self.items.values() if item.get("owner_key") == owner_key]
+        owned.sort(key=lambda item: str(item.get("created_at", "")), reverse=True)
+        return owned[:limit]
 
     def claim_job(self, job_id: str, now_epoch: int, now_iso: str) -> dict[str, Any] | None:
         self.calls.append(
@@ -152,6 +203,13 @@ def _claimable(item: dict[str, Any], now_epoch: int) -> bool:
 
 def _epoch(timestamp: str) -> int:
     return int(datetime.strptime(timestamp, _ISO_FORMAT).replace(tzinfo=UTC).timestamp())
+
+
+def _interaction(item: dict[str, Any]) -> dict[str, Any]:
+    prepared = {name: value for name, value in deepcopy(item).items() if value is not None}
+    prepared["kind"] = "interaction"
+    prepared.setdefault("ttl", _epoch(str(prepared["created_at"])) + INTERACTION_TTL_SECONDS)
+    return prepared
 
 
 def _public(item: dict[str, Any]) -> dict[str, Any]:

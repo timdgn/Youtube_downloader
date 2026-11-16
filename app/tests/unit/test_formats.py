@@ -10,7 +10,7 @@ from typing import Any
 
 import pytest
 
-from ytdl.formats import NoUsableFormat, Selection, select
+from ytdl.formats import NoUsableFormat, Selection, select, select_audio
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
@@ -281,4 +281,220 @@ def test_select_does_not_mutate_metadata() -> None:
     metadata = load_fixture("formats_4k.json")
     before = copy.deepcopy(metadata)
     select(metadata, 1080)
+    assert metadata == before
+
+
+# --- the bounded fallback (T019, research D-07) -------------------------------
+
+
+@pytest.mark.parametrize(
+    ("fixture", "ceiling", "service_ceiling", "video_id", "height"),
+    [
+        pytest.param("formats_1080p.json", 144, 1080, "134", 360, id="144-to-1080"),
+        pytest.param("formats_1080p.json", 240, 720, "134", 360, id="240-to-720"),
+        pytest.param("formats_720p_max.json", 144, 1080, "134", 360, id="720max-144-to-1080"),
+        pytest.param("formats_4k.json", 144, 1080, "134", 360, id="4k-144-to-1080"),
+    ],
+)
+def test_falls_back_to_the_lowest_rendition_below_the_service_ceiling(
+    fixture: str,
+    ceiling: int,
+    service_ceiling: int,
+    video_id: str,
+    height: int,
+) -> None:
+    selection = select(load_fixture(fixture), ceiling, service_ceiling=service_ceiling)
+
+    assert selection == Selection(
+        format_selector=f"{video_id}+140",
+        expected_height=height,
+        vcodec="avc1.4d401e",
+        acodec="mp4a.40.2",
+    )
+
+
+def test_a_rendition_at_or_below_the_ceiling_wins_over_the_fallback() -> None:
+    selection = select(load_fixture("formats_1080p.json"), 480, service_ceiling=1080)
+
+    assert selection.format_selector == "135+140"
+    assert selection.expected_height == 480
+
+
+def test_fallback_refuses_when_nothing_is_at_or_below_the_service_ceiling() -> None:
+    metadata = {
+        "title": "only 4k",
+        "duration": 10,
+        "formats": [
+            {
+                "format_id": "313",
+                "ext": "webm",
+                "height": 2160,
+                "width": 3840,
+                "vcodec": "vp9",
+                "acodec": "none",
+                "tbr": 18000.0,
+            },
+            {
+                "format_id": "140",
+                "ext": "m4a",
+                "height": None,
+                "width": None,
+                "vcodec": "none",
+                "acodec": "mp4a.40.2",
+                "tbr": 129.0,
+                "abr": 128.0,
+            },
+        ],
+    }
+
+    with pytest.raises(NoUsableFormat):
+        select(metadata, 144, service_ceiling=1080)
+
+
+def test_fallback_still_needs_an_audio_stream() -> None:
+    metadata = {
+        "title": "mute",
+        "duration": 10,
+        "formats": [
+            {
+                "format_id": "134",
+                "ext": "mp4",
+                "height": 360,
+                "width": 640,
+                "vcodec": "avc1.4d401e",
+                "acodec": "none",
+                "tbr": 603.0,
+            },
+        ],
+    }
+
+    with pytest.raises(NoUsableFormat):
+        select(metadata, 144, service_ceiling=1080)
+
+
+def test_no_fallback_happens_without_a_service_ceiling() -> None:
+    with pytest.raises(NoUsableFormat):
+        select(load_fixture("formats_1080p.json"), 144, service_ceiling=None)
+
+
+# --- audio-only selection (T019, research D-08) -------------------------------
+
+
+def test_select_audio_picks_the_best_audio_only_stream() -> None:
+    selection = select_audio(load_fixture("formats_1080p.json"))
+
+    assert selection == Selection(
+        format_selector="251",
+        expected_height=None,
+        vcodec=None,
+        acodec="opus",
+    )
+
+
+def test_select_audio_never_picks_a_muxed_video_stream() -> None:
+    metadata = {
+        "title": "muxed and audio",
+        "duration": 10,
+        "formats": [
+            {
+                "format_id": "18",
+                "ext": "mp4",
+                "height": 360,
+                "width": 640,
+                "vcodec": "avc1.42001E",
+                "acodec": "mp4a.40.2",
+                "tbr": 400.0,
+                "abr": 300.0,
+            },
+            {
+                "format_id": "140",
+                "ext": "m4a",
+                "height": None,
+                "width": None,
+                "vcodec": "none",
+                "acodec": "mp4a.40.2",
+                "tbr": 129.0,
+                "abr": 128.0,
+            },
+            {
+                "format_id": "251",
+                "ext": "webm",
+                "height": None,
+                "width": None,
+                "vcodec": "none",
+                "acodec": "opus",
+                "tbr": 161.0,
+                "abr": 160.0,
+            },
+        ],
+    }
+
+    selection = select_audio(metadata)
+
+    assert selection.format_selector == "251"
+    assert selection.acodec == "opus"
+    assert selection.vcodec is None
+    assert selection.expected_height is None
+
+
+def test_select_audio_raises_without_an_audio_only_stream() -> None:
+    metadata = {
+        "title": "no audio stream",
+        "duration": 10,
+        "formats": [
+            {
+                "format_id": "137",
+                "ext": "mp4",
+                "height": 1080,
+                "width": 1920,
+                "vcodec": "avc1.640028",
+                "acodec": "none",
+                "tbr": 4418.0,
+            },
+            {
+                "format_id": "18",
+                "ext": "mp4",
+                "height": 360,
+                "width": 640,
+                "vcodec": "avc1.42001E",
+                "acodec": "mp4a.40.2",
+                "tbr": 400.0,
+            },
+        ],
+    }
+
+    with pytest.raises(NoUsableFormat) as caught:
+        select_audio(metadata)
+
+    assert str(caught.value) == "no audio stream in the metadata"
+
+
+def test_select_audio_uses_an_expression_when_the_id_is_missing() -> None:
+    metadata = {
+        "title": "no ids",
+        "duration": 10,
+        "formats": [
+            {
+                "ext": "m4a",
+                "height": None,
+                "width": None,
+                "vcodec": "none",
+                "acodec": "mp4a.40.2",
+                "tbr": 129.0,
+                "abr": 128.0,
+            },
+        ],
+    }
+
+    selection = select_audio(metadata)
+
+    assert selection.format_selector == "ba"
+
+
+def test_select_audio_does_not_mutate_metadata() -> None:
+    metadata = load_fixture("formats_1080p.json")
+    before = copy.deepcopy(metadata)
+
+    select_audio(metadata)
+
     assert metadata == before

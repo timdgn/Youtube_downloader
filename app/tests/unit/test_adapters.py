@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import subprocess
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -18,7 +19,7 @@ from tests.fakes.extractor_fake import FakeExtractor
 from tests.fakes.s3_fake import FakeMediaStore
 from tests.fakes.sqs_fake import FakeJobQueue
 from ytdl import states
-from ytdl.adapters.dynamo import DynamoRepository, RateLimited
+from ytdl.adapters.dynamo import DuplicateUpdate, DynamoRepository, RateLimited
 from ytdl.adapters.extractor import ExtractionError, Extractor
 from ytdl.adapters.s3 import MediaStore
 from ytdl.adapters.sqs import JobQueue
@@ -660,3 +661,240 @@ def test_s3_client_pins_the_regional_endpoint(monkeypatch: pytest.MonkeyPatch) -
     assert captured["name"] == "s3"
     assert captured["region_name"] == "eu-west-3"
     assert captured["endpoint_url"] == "https://s3.eu-west-3.amazonaws.com"
+
+
+# --- the bot's access patterns (data-model.md "Index") ----------------------
+
+INTERACTION = {
+    "pk": "UPD#812345678",
+    "owner_key": "tg:123456789#interaction",
+    "created_at": NOW_ISO,
+    "text": "/list",
+    "outcome": "command:list",
+}
+
+INTERACTION_TTL_SECONDS = 30 * 86400
+
+
+def test_create_job_with_an_interaction_writes_three_actions_in_order() -> None:
+    repo, client = _repo()
+
+    repo.create_job_with_rate_increment(JOB, RATE_PK, 10, NOW_EPOCH, INTERACTION)
+
+    items = client.transact_write_items.call_args.kwargs["TransactItems"]
+    assert [next(iter(item)) for item in items] == ["Put", "Update", "Put"]
+
+    put = items[2]["Put"]
+    assert put["TableName"] == TABLE
+    assert put["ConditionExpression"] == "attribute_not_exists(pk)"
+    item = _plain(put["Item"])
+    assert item["pk"] == "UPD#812345678"
+    assert item["kind"] == "interaction"
+    assert item["ttl"] == int(datetime.fromisoformat(NOW_ISO).timestamp()) + INTERACTION_TTL_SECONDS
+
+
+def test_a_duplicate_update_id_cancels_the_whole_transaction() -> None:
+    repo, client = _repo()
+    client.transact_write_items.side_effect = _transaction_cancelled(
+        ["None", "None", "ConditionalCheckFailed"]
+    )
+
+    with pytest.raises(DuplicateUpdate):
+        repo.create_job_with_rate_increment(JOB, RATE_PK, 10, NOW_EPOCH, INTERACTION)
+
+    client.transact_write_items.assert_called_once()
+    assert client.put_item.call_count == 0
+    assert client.update_item.call_count == 0
+
+
+def test_the_rate_limit_and_the_duplicate_guard_are_distinguished_by_index() -> None:
+    repo, client = _repo()
+    client.transact_write_items.side_effect = _transaction_cancelled(
+        ["None", "ConditionalCheckFailed", "None"]
+    )
+
+    with pytest.raises(RateLimited):
+        repo.create_job_with_rate_increment(JOB, RATE_PK, 10, NOW_EPOCH, INTERACTION)
+
+
+def test_query_owner_jobs_uses_the_owner_index_in_descending_order() -> None:
+    repo, client = _repo()
+    client.query.return_value = {
+        "Items": [_typed({"pk": "JOB#a", "owner_key": "tg:1#job", "video_id": "dQw4w9WgXcQ"})]
+    }
+
+    jobs = repo.query_owner_jobs("tg:1#job", 200)
+
+    assert jobs == [{"owner_key": "tg:1#job", "video_id": "dQw4w9WgXcQ"}]
+    kwargs = client.query.call_args.kwargs
+    assert kwargs["TableName"] == TABLE
+    assert kwargs["IndexName"] == "owner-created-index"
+    assert kwargs["KeyConditionExpression"] == "owner_key = :owner"
+    assert kwargs["ScanIndexForward"] is False
+    assert kwargs["Limit"] == 200
+    assert "FilterExpression" not in kwargs
+    assert _plain(kwargs["ExpressionAttributeValues"]) == {":owner": "tg:1#job"}
+
+
+def test_query_owner_jobs_returns_plain_numbers() -> None:
+    repo, client = _repo()
+    client.query.return_value = {"Items": [_typed({"pk": "JOB#a", "media_size_bytes": 1234})]}
+
+    jobs = repo.query_owner_jobs("tg:1#job", 10)
+
+    assert jobs == [{"media_size_bytes": 1234}]
+    assert isinstance(jobs[0]["media_size_bytes"], int)
+
+
+def test_query_owner_jobs_returns_an_empty_list_for_no_items() -> None:
+    repo, client = _repo()
+    client.query.return_value = {}
+
+    assert repo.query_owner_jobs("tg:1#job", 10) == []
+
+
+def test_query_interactions_uses_the_same_index_and_a_limit_of_ten() -> None:
+    repo, client = _repo()
+    client.query.return_value = {"Items": [_typed(INTERACTION)]}
+
+    items = repo.query_interactions("tg:123456789#interaction")
+
+    assert items[0]["pk"] == "UPD#812345678"
+    kwargs = client.query.call_args.kwargs
+    assert kwargs["IndexName"] == "owner-created-index"
+    assert kwargs["ScanIndexForward"] is False
+    assert kwargs["Limit"] == 10
+    assert _plain(kwargs["ExpressionAttributeValues"]) == {":owner": "tg:123456789#interaction"}
+
+
+def test_get_jobs_batch_reads_with_consistent_reads() -> None:
+    repo, client = _repo()
+    client.batch_get_item.return_value = {"Responses": {TABLE: [_typed({"pk": "JOB#a", **JOB})]}}
+
+    jobs = repo.get_jobs(["a", "b"])
+
+    assert jobs == [JOB]
+    request = client.batch_get_item.call_args.kwargs["RequestItems"][TABLE]
+    assert request["ConsistentRead"] is True
+    assert request["Keys"] == [{"pk": {"S": "JOB#a"}}, {"pk": {"S": "JOB#b"}}]
+
+
+def test_get_jobs_with_no_ids_makes_no_call() -> None:
+    repo, client = _repo()
+
+    assert repo.get_jobs([]) == []
+    assert client.batch_get_item.call_count == 0
+
+
+def test_get_jobs_survives_an_unprocessed_key_by_returning_what_it_has() -> None:
+    repo, client = _repo()
+    client.batch_get_item.return_value = {
+        "Responses": {TABLE: [_typed({"pk": "JOB#a", **JOB})]},
+        "UnprocessedKeys": {TABLE: {"Keys": [{"pk": {"S": "JOB#b"}}]}},
+    }
+
+    assert repo.get_jobs(["a", "b"]) == [JOB]
+
+
+def test_mark_deleted_sets_the_overlay_only_on_a_completed_live_item() -> None:
+    repo, client = _repo()
+
+    repo.mark_deleted("a", NOW_ISO)
+
+    kwargs = client.update_item.call_args.kwargs
+    assert _plain(kwargs["Key"]) == {"pk": "JOB#a"}
+    assert kwargs["ConditionExpression"] == (
+        "#state = :completed AND attribute_not_exists(#deleted_at)"
+    )
+    assert kwargs["ExpressionAttributeNames"]["#deleted_at"] == "deleted_at"
+    assert _plain(kwargs["ExpressionAttributeValues"])[":now"] == NOW_ISO
+    assert _plain(kwargs["ExpressionAttributeValues"])[":completed"] == "completed"
+
+
+def test_mark_deleted_is_a_no_op_when_the_guard_fails() -> None:
+    repo, client = _repo()
+    client.update_item.side_effect = _client_error("ConditionalCheckFailedException")
+
+    assert repo.mark_deleted("a", NOW_ISO) is None
+
+
+def test_put_interaction_writes_a_self_describing_item_with_a_thirty_day_ttl() -> None:
+    repo, client = _repo()
+    item = {key: value for key, value in INTERACTION.items() if key != "kind"}
+
+    repo.put_interaction(item)
+
+    kwargs = client.put_item.call_args.kwargs
+    assert kwargs["TableName"] == TABLE
+    written = _plain(kwargs["Item"])
+    assert written["kind"] == "interaction"
+    assert written["pk"] == "UPD#812345678"
+    assert (
+        written["ttl"] == int(datetime.fromisoformat(NOW_ISO).timestamp()) + INTERACTION_TTL_SECONDS
+    )
+
+
+def test_put_interaction_is_an_unconditional_put() -> None:
+    """Commands are naturally idempotent, so a redelivery must not raise."""
+    repo, client = _repo()
+
+    repo.put_interaction(dict(INTERACTION))
+
+    assert "ConditionExpression" not in client.put_item.call_args.kwargs
+
+
+# --- MediaStore content type and deletion -----------------------------------
+
+
+def test_presign_get_uses_the_audio_content_type_for_mp3() -> None:
+    store, client = _store()
+    client.generate_presigned_url.return_value = "https://example.invalid/signed"
+
+    store.presign_get(
+        "output/a/dQw4w9WgXcQ.mp3",
+        "dQw4w9WgXcQ-high-k2q1.mp3",
+        3600,
+        content_type="audio/mpeg",
+    )
+
+    params = client.generate_presigned_url.call_args.kwargs["Params"]
+    assert params["ResponseContentType"] == "audio/mpeg"
+    assert params["ResponseContentDisposition"] == (
+        'attachment; filename="dQw4w9WgXcQ-high-k2q1.mp3"'
+    )
+
+
+def test_presign_get_defaults_to_video_mp4() -> None:
+    store, client = _store()
+    client.generate_presigned_url.return_value = "https://example.invalid/signed"
+
+    store.presign_get("output/a/dQw4w9WgXcQ.mp4", "dQw4w9WgXcQ.mp4", 600)
+
+    params = client.generate_presigned_url.call_args.kwargs["Params"]
+    assert params["ResponseContentType"] == "video/mp4"
+    assert client.generate_presigned_url.call_args.kwargs["ExpiresIn"] == 600
+
+
+def test_delete_object_calls_s3_and_returns() -> None:
+    store, client = _store()
+
+    assert store.delete_object("output/a/dQw4w9WgXcQ.mp4") is None
+    assert client.delete_object.call_args.kwargs == {
+        "Bucket": BUCKET,
+        "Key": "output/a/dQw4w9WgXcQ.mp4",
+    }
+
+
+def test_delete_object_swallows_a_missing_key() -> None:
+    store, client = _store()
+    client.delete_object.side_effect = _client_error("NoSuchKey")
+
+    assert store.delete_object("output/a/dQw4w9WgXcQ.mp4") is None
+
+
+def test_delete_object_does_not_swallow_other_errors() -> None:
+    store, client = _store()
+    client.delete_object.side_effect = _client_error("AccessDenied")
+
+    with pytest.raises(ClientError):
+        store.delete_object("output/a/dQw4w9WgXcQ.mp4")

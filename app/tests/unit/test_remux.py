@@ -13,6 +13,7 @@ from ytdl.worker import remux
 
 SOURCE = "/tmp/source.mp4"
 DEST = "/tmp/output.mp4"
+DEST_MP3 = "/tmp/output.mp3"
 
 STREAMS_JSON = json.dumps(
     {
@@ -186,3 +187,102 @@ def test_probe_output_raises_on_malformed_json(monkeypatch: pytest.MonkeyPatch) 
 
     with pytest.raises(remux.RemuxError):
         remux.probe_output(DEST)
+
+
+# --- MP3 encoding (T020, research D-08) --------------------------------------
+
+
+def test_build_mp3_args_encodes_audio_at_192k() -> None:
+    args = remux.build_mp3_args(SOURCE, DEST_MP3)
+
+    assert args[0] == "ffmpeg"
+    assert args[-1] == DEST_MP3
+    assert args[args.index("-i") + 1] == SOURCE
+    assert "-vn" in args
+    assert args[args.index("-c:a") + 1] == "libmp3lame"
+    assert args[args.index("-b:a") + 1] == "192k"
+    assert args[args.index("-movflags") + 1] == "+faststart"
+    assert "-y" in args
+    assert "-hide_banner" in args
+    assert "-nostdin" in args
+    assert "-c" not in args
+    assert "copy" not in args
+
+
+def test_convert_to_mp3_runs_one_ffmpeg_without_a_shell(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = str(tmp_path / "source.mp4")
+    dest = tmp_path / "output.mp3"
+    seen: dict[str, Any] = {}
+
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        seen["command"] = command
+        seen.update(kwargs)
+        dest.write_bytes(b"mp3-bytes")
+        return _completed(command)
+
+    monkeypatch.setattr(remux.subprocess, "run", fake_run)
+
+    remux.convert_to_mp3(source, str(dest))
+
+    assert seen["command"] == remux.build_mp3_args(source, str(dest))
+    assert seen["shell"] is False
+    assert seen["capture_output"] is True
+    assert seen["text"] is True
+    assert seen["timeout"] == 600
+
+
+def test_convert_to_mp3_raises_with_stderr_on_non_zero_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return _completed(command, returncode=1, stderr="Unknown encoder 'libmp3lame'")
+
+    monkeypatch.setattr(remux.subprocess, "run", fake_run)
+
+    with pytest.raises(remux.RemuxError) as excinfo:
+        remux.convert_to_mp3(SOURCE, DEST_MP3)
+
+    assert excinfo.value.stderr == "Unknown encoder 'libmp3lame'"
+    assert "1" in str(excinfo.value)
+
+
+def test_convert_to_mp3_raises_when_the_output_is_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return _completed(command)
+
+    monkeypatch.setattr(remux.subprocess, "run", fake_run)
+
+    with pytest.raises(remux.RemuxError):
+        remux.convert_to_mp3(SOURCE, str(tmp_path / "output.mp3"))
+
+
+def test_convert_to_mp3_raises_when_the_output_is_empty(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dest = tmp_path / "output.mp3"
+
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        dest.write_bytes(b"")
+        return _completed(command)
+
+    monkeypatch.setattr(remux.subprocess, "run", fake_run)
+
+    with pytest.raises(remux.RemuxError):
+        remux.convert_to_mp3(SOURCE, str(dest))
+
+
+def test_probe_output_on_an_audio_only_file_reports_no_video(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = json.dumps({"streams": [{"codec_type": "audio", "codec_name": "mp3", "channels": 2}]})
+
+    def fake_run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        return _completed(command, stdout=payload)
+
+    monkeypatch.setattr(remux.subprocess, "run", fake_run)
+
+    assert remux.probe_output(DEST_MP3) == {"height": None, "vcodec": None, "acodec": "mp3"}

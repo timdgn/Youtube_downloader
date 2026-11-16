@@ -1,9 +1,9 @@
 """The worker pipeline (T053, T067, T071, T081).
 
-Probe, enforce the caps, select a format pair, download, remux, verify the size,
-probe the output, upload, and return the completion fields. Every decision that
-can refuse the job is taken before the media transfer, so a refused job costs no
-bandwidth.
+Probe, enforce the caps, select a format pair (or the best audio-only stream),
+download, remux or encode, verify the size, probe the output, upload, and
+return the completion fields. Every decision that can refuse the job is taken
+before the media transfer, so a refused job costs no bandwidth.
 """
 
 from __future__ import annotations
@@ -14,16 +14,21 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from ytdl import errors, formats, keys, limits, quality
+from ytdl import errors, formats, keys, limits, quality, titles
 from ytdl.config import Config
-from ytdl.worker.remux import probe_output, remux_to_mp4
+from ytdl.worker.remux import convert_to_mp3, probe_output, remux_to_mp4
 
 MEDIA_RETENTION_SECONDS = 604_800
 DEADLINE_SECONDS = 780
 
 _SOURCE_URL = "https://www.youtube.com/watch?v={video_id}"
-_OUTPUT_FILENAME = "output.mp4"
-_CONTENT_TYPE_MEDIA = "video/mp4"
+_VIDEO = "video"
+_AUDIO = "audio"
+_MP4 = "mp4"
+_MP3 = "mp3"
+_OUTPUT_FILENAMES = {_VIDEO: "output.mp4", _AUDIO: "output.mp3"}
+_CONTENT_TYPES = {_VIDEO: "video/mp4", _AUDIO: "audio/mpeg"}
+_EXTENSIONS = {_VIDEO: _MP4, _AUDIO: _MP3}
 
 
 class LimitExceeded(Exception):
@@ -46,6 +51,7 @@ def process_job(
     config: Config,
     workdir: str,
     remux_fn: Callable[[str, str], None] = remux_to_mp4,
+    mp3_fn: Callable[[str, str], None] = convert_to_mp3,
     probe_fn: Callable[[str], dict[str, Any]] = probe_output,
     now: Callable[[], float] | None = None,
 ) -> dict[str, Any]:
@@ -61,13 +67,17 @@ def process_job(
     job_id = str(job["job_id"])
     video_id = str(job["video_id"])
     url = _SOURCE_URL.format(video_id=video_id)
+    media_kind = _media_kind(job)
 
     metadata = extractor.probe(url)
     duration = _duration_seconds(metadata.get("duration"))
     _enforce(limits.check_duration(duration, config.max_duration_seconds))
 
     ceiling = min(int(job.get("requested_height") or config.max_height), config.max_height)
-    selection = formats.select(metadata, ceiling)
+    if media_kind == _AUDIO:
+        selection = formats.select_audio(metadata)
+    else:
+        selection = formats.select(metadata, ceiling, service_ceiling=config.max_height)
 
     estimated = _estimated_size(metadata, selection)
     if estimated is not None:
@@ -78,45 +88,65 @@ def process_job(
     source = extractor.download(url, selection.format_selector, workdir)
     _check_deadline(clock, started)
 
-    output = os.path.join(workdir, _OUTPUT_FILENAME)
-    remux_fn(source, output)
+    output = os.path.join(workdir, _OUTPUT_FILENAMES[media_kind])
+    if media_kind == _AUDIO:
+        mp3_fn(source, output)
+    else:
+        remux_fn(source, output)
 
     if os.path.getsize(output) > config.max_output_bytes:
         raise LimitExceeded(_limit_failure())
 
     produced = probe_fn(output)
-    height = _height(produced.get("height"))
-    label = quality.label_for(height)
+    height = _height(produced.get("height")) if media_kind == _VIDEO else None
 
-    media = keys.media_key(job_id, video_id)
+    media = keys.media_key(job_id, video_id, extension=_EXTENSIONS[media_kind])
+    object_metadata = {"job-id": job_id, "source-video-id": video_id}
+    if media_kind == _VIDEO:
+        object_metadata["produced-height"] = "" if height is None else str(height)
+    object_metadata["media-kind"] = media_kind
     size = store.put_file(
         output,
         media,
-        _CONTENT_TYPE_MEDIA,
-        {
-            "job-id": job_id,
-            "produced-height": "" if height is None else str(height),
-            "source-video-id": video_id,
-        },
+        _CONTENT_TYPES[media_kind],
+        object_metadata,
     )
 
     created_at = int(clock())
     fields: dict[str, Any] = {
+        "video_title": titles.sanitise_title(metadata.get("title")),
         "media_key": media,
         "media_size_bytes": size,
         "media_created_at": created_at,
         "media_expires_at": created_at + MEDIA_RETENTION_SECONDS,
-        "produced_vcodec": _text(produced.get("vcodec")) or selection.vcodec,
-        "produced_acodec": _text(produced.get("acodec")) or selection.acodec,
         "processing_ms": max(0, int((clock() - started) * 1000)),
     }
-    if height is not None:
-        fields["produced_height"] = height
-    if label is not None:
-        fields["produced_quality"] = label
+    vcodec = _text(produced.get("vcodec"))
+    acodec = _text(produced.get("acodec"))
+    if media_kind == _VIDEO:
+        vcodec = vcodec or selection.vcodec
+        acodec = acodec or selection.acodec
+    if vcodec is not None:
+        fields["produced_vcodec"] = vcodec
+    if acodec is not None:
+        fields["produced_acodec"] = acodec
+    if media_kind == _AUDIO:
+        fields["media_kind"] = _AUDIO
+        fields["produced_quality"] = _MP3
+    else:
+        label = quality.label_for(height)
+        if height is not None:
+            fields["produced_height"] = height
+        if label is not None:
+            fields["produced_quality"] = label
     if duration is not None:
         fields["duration_seconds"] = duration
     return fields
+
+
+def _media_kind(job: dict[str, Any]) -> str:
+    """Audio only when the job says so; every pre-existing job is a video."""
+    return _AUDIO if job.get("media_kind") == _AUDIO else _VIDEO
 
 
 def _enforce(decision: limits.Decision) -> None:

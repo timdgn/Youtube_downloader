@@ -55,17 +55,35 @@ class FakeMediaStore:
             "metadata": dict(stored.get("metadata") or {}),
         }
 
-    def presign_get(self, key: str, filename: str, expires_in: int) -> str:
+    def presign_get(
+        self,
+        key: str,
+        filename: str,
+        expires_in: int,
+        content_type: str = "video/mp4",
+    ) -> str:
         self.calls.append(
-            ("presign_get", {"key": key, "filename": filename, "expires_in": expires_in})
+            (
+                "presign_get",
+                {
+                    "key": key,
+                    "filename": filename,
+                    "expires_in": expires_in,
+                    "content_type": content_type,
+                },
+            )
         )
         disposition = quote(f'attachment; filename="{filename}"')
         return (
             f"https://{self.bucket}.s3.eu-west-1.amazonaws.com/{key}"
             f"?X-Amz-Expires={expires_in}"
             f"&response-content-disposition={disposition}"
-            "&response-content-type=video%2Fmp4"
+            f"&response-content-type={quote(content_type)}"
         )
+
+    def delete_object(self, key: str) -> None:
+        self.calls.append(("delete_object", {"key": key}))
+        self.objects.pop(key, None)
 
     def get_text(self, key: str) -> str:
         self.calls.append(("get_text", {"key": key}))

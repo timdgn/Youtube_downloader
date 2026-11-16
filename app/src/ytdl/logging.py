@@ -24,6 +24,7 @@ ALLOWED_FIELDS = frozenset(
         "duration_ms",
         "queue",
         "message",
+        "update_id",
     }
 )
 

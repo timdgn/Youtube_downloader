@@ -56,6 +56,47 @@ def remux_to_mp4(source: str, dest: str, timeout_seconds: int = 300) -> None:
         raise RemuxError("ffmpeg produced an empty file", stderr=_stderr(completed))
 
 
+def build_mp3_args(source: str, dest: str) -> list[str]:
+    """Build the one-invocation MP3 encode command (research D-08)."""
+    return [
+        _FFMPEG,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-nostdin",
+        "-y",
+        "-i",
+        source,
+        "-vn",
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        dest,
+    ]
+
+
+def convert_to_mp3(source: str, dest: str, timeout_seconds: int = 600) -> None:
+    """Encode the audio stream of ``source`` as a 192 kbps MP3 at ``dest``.
+
+    Re-encodes with the pinned ``libmp3lame``; the video stream is dropped.
+    Raises :class:`RemuxError` with ffmpeg's stderr on failure.
+    """
+    command = build_mp3_args(source, dest)
+    completed = _run(command, timeout_seconds, "ffmpeg")
+
+    if completed.returncode != 0:
+        raise RemuxError(
+            f"ffmpeg exited with code {completed.returncode}", stderr=_stderr(completed)
+        )
+    if not os.path.isfile(dest):
+        raise RemuxError("ffmpeg produced no output file", stderr=_stderr(completed))
+    if os.path.getsize(dest) == 0:
+        raise RemuxError("ffmpeg produced an empty file", stderr=_stderr(completed))
+
+
 def probe_output(path: str, timeout_seconds: int = 60) -> dict[str, Any]:
     """Return the produced height and codecs, parsed from ffprobe's JSON only."""
     command = [_FFPROBE, "-v", "error", "-print_format", "json", "-show_streams", path]
