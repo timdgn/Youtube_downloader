@@ -194,6 +194,11 @@ The documented profile is 100 videos per month at 15 minutes each with 7-day ret
 expected at roughly $1.40 per month, against a $10 ceiling with alarms at $5 and $10.
 There is no idle cost: `terraform destroy` removes every chargeable resource.
 
+Everything runs in `eu-west-3` (Paris), with one deliberate exception: the two budget
+alarms live in `us-east-1`, because the `AWS/Billing` metric is published only there.
+They notify a second SNS topic, `ytdl-<env>-alarms-us-east-1`. Set `alarm_email` and
+confirm both subscription emails, or the alarms fire into a topic nobody reads.
+
 ## Known limitation
 
 YouTube scores datacenter IP ranges badly, and Lambda egress addresses are datacenter

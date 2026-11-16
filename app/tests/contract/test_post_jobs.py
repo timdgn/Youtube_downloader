@@ -372,7 +372,8 @@ def test_retry_after_header_never_drops_below_one_second() -> None:
 
 def test_queue_failure_returns_500_internal_error() -> None:
     dynamo, media, _queue = _isolation()
-    api = _api(dynamo, media, _FailingQueue())
+    logger = _Logger()
+    api = _api(dynamo, media, _FailingQueue(), logger=logger)
 
     response = _submit(api)
 
@@ -382,6 +383,10 @@ def test_queue_failure_returns_500_internal_error() -> None:
     assert body["error"]["retryable"] is True
     assert "Traceback" not in response["body"]
     assert "queue unavailable" not in response["body"]
+    assert any(
+        event == "request_failed" and fields.get("message") == "RuntimeError"
+        for event, fields in logger.calls
+    ), "a swallowed exception must leave a trace in the log"
 
 
 # --- routing and envelopes --------------------------------------------------

@@ -69,8 +69,9 @@ Expected: a base URL and a bucket name, both suffixed for `dev`.
 -var image_tag=<tag>` immediately afterwards reports no changes. If it proposes
 changes, something was applied outside the definition.
 
-**Cost guard check** (principle V): the SNS topic `ytdl-dev-alarms` exists and has one
-confirmed subscription when `alarm_email` is set in `env/dev.tfvars`.
+**Cost guard check** (principle V): the SNS topic `ytdl-dev-alarms` exists in Paris and
+`ytdl-dev-alarms-us-east-1` exists in N. Virginia, each with one confirmed subscription
+when `alarm_email` is set in `env/dev.tfvars`. Confirm both addresses, not just one.
 
 ---
 

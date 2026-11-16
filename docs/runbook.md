@@ -51,8 +51,12 @@ Two rules that follow from this table:
 
 ## 3. Alarm response
 
-All alarms publish to one SNS topic, `ytdl-<env>-alarms`. Each row names the first action,
-not the whole investigation.
+Five operational alarms publish to `ytdl-<env>-alarms` in Paris. The two budget alarms
+publish to `ytdl-<env>-alarms-us-east-1`, because a CloudWatch alarm can only notify a
+topic in its own region and `AWS/Billing` exists only in `us-east-1`. Both topics need a
+confirmed email subscription; the same address is used for each when `alarm_email` is set.
+
+Each row names the first action, not the whole investigation.
 
 | Alarm | Meaning | First action |
 |-------|---------|--------------|

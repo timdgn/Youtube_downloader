@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any
 
+from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
 from botocore.exceptions import ClientError
 
 from ytdl import keys, states
@@ -15,6 +17,9 @@ RETRY_AFTER_SECONDS = 3600
 
 _JOB_PREFIX = "JOB#"
 _RATE_CONDITION = "attribute_not_exists(#count) OR #count < :limit"
+
+_SERIALIZER = TypeSerializer()
+_DESERIALIZER = TypeDeserializer()
 
 
 class RateLimited(Exception):
@@ -44,19 +49,21 @@ class DynamoRepository:
         try:
             self._client.transact_write_items(
                 TransactItems=[
-                    {"Put": {"TableName": self._table_name, "Item": item}},
+                    {"Put": {"TableName": self._table_name, "Item": _attribute_map(item)}},
                     {
                         "Update": {
                             "TableName": self._table_name,
-                            "Key": {"pk": rate_pk},
+                            "Key": {"pk": _attribute(rate_pk)},
                             "UpdateExpression": "SET #ttl = :ttl ADD #count :one",
                             "ConditionExpression": _RATE_CONDITION,
                             "ExpressionAttributeNames": {"#count": "count", "#ttl": "ttl"},
-                            "ExpressionAttributeValues": {
-                                ":one": 1,
-                                ":limit": limit,
-                                ":ttl": window_start + keys.RATE_TTL_SECONDS,
-                            },
+                            "ExpressionAttributeValues": _attribute_map(
+                                {
+                                    ":one": 1,
+                                    ":limit": limit,
+                                    ":ttl": window_start + keys.RATE_TTL_SECONDS,
+                                }
+                            ),
                         }
                     },
                 ]
@@ -69,11 +76,11 @@ class DynamoRepository:
     def get_job(self, job_id: str) -> dict[str, Any] | None:
         response = self._client.get_item(
             TableName=self._table_name,
-            Key={"pk": _job_pk(job_id)},
+            Key={"pk": _attribute(_job_pk(job_id))},
             ConsistentRead=True,
         )
         item = response.get("Item")
-        return _without_partition_key(item) if item else None
+        return _without_partition_key(_plain_item(item)) if item else None
 
     def claim_job(self, job_id: str, now_epoch: int, now_iso: str) -> dict[str, Any] | None:
         """Move accepted, stale processing, or a retryable failure to processing.
@@ -95,7 +102,7 @@ class DynamoRepository:
         try:
             response = self._client.update_item(
                 TableName=self._table_name,
-                Key={"pk": _job_pk(job_id)},
+                Key={"pk": _attribute(_job_pk(job_id))},
                 UpdateExpression=(
                     "SET #state = :processing, #updated_at = :now, "
                     "#attempt = if_not_exists(#attempt, :zero) + :one"
@@ -107,7 +114,7 @@ class DynamoRepository:
                     "#updated_at": "updated_at",
                     "#attempt": "attempt",
                 },
-                ExpressionAttributeValues=values,
+                ExpressionAttributeValues=_attribute_map(values),
                 ReturnValues="ALL_NEW",
             )
         except ClientError as error:
@@ -115,7 +122,7 @@ class DynamoRepository:
                 return None
             raise
 
-        return _without_partition_key(response["Attributes"])
+        return _without_partition_key(_plain_item(response["Attributes"]))
 
     def complete_job(self, job_id: str, fields: dict[str, Any], now_iso: str) -> None:
         media_expires_at = fields["media_expires_at"]
@@ -157,11 +164,11 @@ class DynamoRepository:
         try:
             self._client.update_item(
                 TableName=self._table_name,
-                Key={"pk": _job_pk(job_id)},
+                Key={"pk": _attribute(_job_pk(job_id))},
                 UpdateExpression="SET " + ", ".join(assignments),
                 ConditionExpression=states.transition_condition(target),
                 ExpressionAttributeNames=names,
-                ExpressionAttributeValues=values,
+                ExpressionAttributeValues=_attribute_map(values),
             )
         except ClientError as error:
             if _is_conditional_failure(error):
@@ -171,6 +178,37 @@ class DynamoRepository:
 
 def _job_pk(job_id: str) -> str:
     return f"{_JOB_PREFIX}{job_id}"
+
+
+def _attribute(value: Any) -> dict[str, Any]:
+    """Encode one Python value as a DynamoDB AttributeValue.
+
+    The low-level client accepts nothing else. Floats are not a DynamoDB type, so
+    they are carried as an exact decimal instead of being silently truncated.
+    """
+    if isinstance(value, float):
+        value = Decimal(str(value))
+    return _SERIALIZER.serialize(value)
+
+
+def _attribute_map(values: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {name: _attribute(value) for name, value in values.items()}
+
+
+def _plain_attr(value: dict[str, Any]) -> Any:
+    plain = _DESERIALIZER.deserialize(value)
+    if isinstance(plain, Decimal):
+        return int(plain) if plain == plain.to_integral_value() else float(plain)
+    return plain
+
+
+def _plain_item(item: dict[str, Any]) -> dict[str, Any]:
+    """Decode an item and turn every Decimal back into a plain number.
+
+    DynamoDB has no integer type; without this, ints would reach ``json.dumps`` as
+    ``Decimal`` and every response body would fail to serialise.
+    """
+    return {name: _plain_attr(value) for name, value in item.items()}
 
 
 def _without_none(item: dict[str, Any]) -> dict[str, Any]:

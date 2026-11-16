@@ -73,7 +73,11 @@ class Api:
         started = time.monotonic()
         try:
             response = self._dispatch(event)
-        except Exception:
+        except Exception as error:
+            # A caught exception leaves no traceback in CloudWatch unless it is
+            # logged here. Only the class name is recorded: a message could carry
+            # a URL or a credential.
+            self._logger.error("request_failed", message=type(error).__name__)
             response = _error("internal_error", 500)
         self._log_request(started, response)
         return response
@@ -156,10 +160,8 @@ class Api:
             "requested_height": requested_height if requested_quality is not None else None,
             "enqueued_at": created_at,
         }
-        try:
-            self._queue.enqueue(message)
-        except Exception:
-            return _error("internal_error", 500)
+        # A queue failure propagates to `handle`, which logs it and answers 500.
+        self._queue.enqueue(message)
 
         return routes.response(202, routes.accepted_body(job))
 

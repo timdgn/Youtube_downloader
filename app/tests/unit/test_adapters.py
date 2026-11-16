@@ -5,10 +5,12 @@ from __future__ import annotations
 import inspect
 import json
 import subprocess
+from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from boto3.dynamodb.types import TypeDeserializer, TypeSerializer
 from botocore.exceptions import ClientError
 
 from tests.fakes.dynamo_fake import FakeDynamoRepository
@@ -39,6 +41,23 @@ JOB = {
     "video_id": "dQw4w9WgXcQ",
     "attempt": 1,
 }
+
+
+_SERIALIZER = TypeSerializer()
+_DESERIALIZER = TypeDeserializer()
+
+
+def _typed(item: dict) -> dict:
+    """Encode a plain item the way the low-level client expects it."""
+    return {
+        name: _SERIALIZER.serialize(Decimal(str(value)) if isinstance(value, float) else value)
+        for name, value in item.items()
+    }
+
+
+def _plain(item: dict) -> dict:
+    """Decode an AttributeValue map back to plain Python values."""
+    return {name: _DESERIALIZER.deserialize(value) for name, value in item.items()}
 
 
 def _client_error(code: str, message: str = "boom") -> ClientError:
@@ -74,16 +93,17 @@ def test_create_job_writes_one_transaction_with_the_job_and_the_counter() -> Non
     assert len(transact_items) == 2
     put = transact_items[0]["Put"]
     assert put["TableName"] == TABLE
-    assert put["Item"]["pk"] == "JOB#m3x9k2q1f7abc"
-    assert put["Item"]["ttl"] == NOW_EPOCH + 2_592_000 + 604_800
-    assert put["Item"]["state"] == "accepted"
+    item = _plain(put["Item"])
+    assert item["pk"] == "JOB#m3x9k2q1f7abc"
+    assert item["ttl"] == NOW_EPOCH + 2_592_000 + 604_800
+    assert item["state"] == "accepted"
 
     update = transact_items[1]["Update"]
     assert update["TableName"] == TABLE
-    assert update["Key"] == {"pk": RATE_PK}
+    assert _plain(update["Key"]) == {"pk": RATE_PK}
     assert "ADD #count :one" in update["UpdateExpression"]
     assert update["ConditionExpression"] == ("attribute_not_exists(#count) OR #count < :limit")
-    values = update["ExpressionAttributeValues"]
+    values = _plain(update["ExpressionAttributeValues"])
     assert values[":one"] == 1
     assert values[":limit"] == 10
     assert values[":ttl"] == WINDOW + 7200
@@ -127,10 +147,10 @@ def test_other_transaction_cancellations_are_reraised() -> None:
 
 def test_get_job_returns_the_item_without_the_partition_key() -> None:
     repo, client = _repo()
-    client.get_item.return_value = {"Item": {"pk": "JOB#m3x9k2q1f7abc", **JOB}}
+    client.get_item.return_value = {"Item": _typed({"pk": "JOB#m3x9k2q1f7abc", **JOB})}
 
     assert repo.get_job("m3x9k2q1f7abc") == JOB
-    assert client.get_item.call_args.kwargs["Key"] == {"pk": "JOB#m3x9k2q1f7abc"}
+    assert _plain(client.get_item.call_args.kwargs["Key"]) == {"pk": "JOB#m3x9k2q1f7abc"}
 
 
 def test_get_job_returns_none_for_an_unknown_id() -> None:
@@ -142,12 +162,13 @@ def test_get_job_returns_none_for_an_unknown_id() -> None:
 
 def test_claim_job_uses_the_stale_claim_condition() -> None:
     repo, client = _repo()
-    client.update_item.return_value = {"Attributes": {"pk": "JOB#a", "state": "processing"}}
+    client.update_item.return_value = {"Attributes": _typed({"pk": "JOB#a", "state": "processing"})}
 
     item = repo.claim_job("a", NOW_EPOCH, NOW_ISO)
 
     assert item == {"state": "processing"}
     kwargs = client.update_item.call_args.kwargs
+    values = _plain(kwargs["ExpressionAttributeValues"])
     assert kwargs["ConditionExpression"] == (
         "#state = :accepted OR (#state = :processing AND #updated_at < :stale) OR "
         "(#state = :failed AND #failure_retryable = :true AND "
@@ -155,22 +176,22 @@ def test_claim_job_uses_the_stale_claim_condition() -> None:
     )
     assert "if_not_exists(#attempt" in kwargs["UpdateExpression"]
     assert "+ :one" in kwargs["UpdateExpression"]
-    assert kwargs["ExpressionAttributeValues"][":stale"] == STALE_ISO
-    assert kwargs["ExpressionAttributeValues"][":accepted"] == "accepted"
-    assert kwargs["ExpressionAttributeValues"][":processing"] == "processing"
-    assert kwargs["ExpressionAttributeValues"][":now"] == NOW_ISO
+    assert values[":stale"] == STALE_ISO
+    assert values[":accepted"] == "accepted"
+    assert values[":processing"] == "processing"
+    assert values[":now"] == NOW_ISO
     assert kwargs["ReturnValues"] == "ALL_NEW"
 
 
 def test_claim_job_carries_the_retry_branch_and_its_values() -> None:
     repo, client = _repo()
-    client.update_item.return_value = {"Attributes": {"pk": "JOB#a", "state": "processing"}}
+    client.update_item.return_value = {"Attributes": _typed({"pk": "JOB#a", "state": "processing"})}
 
     repo.claim_job("a", NOW_EPOCH, NOW_ISO)
 
     kwargs = client.update_item.call_args.kwargs
     condition = kwargs["ConditionExpression"]
-    values = kwargs["ExpressionAttributeValues"]
+    values = _plain(kwargs["ExpressionAttributeValues"])
     names = kwargs["ExpressionAttributeNames"]
 
     assert "#state = :failed AND #failure_retryable = :true" in condition
@@ -184,11 +205,11 @@ def test_claim_job_carries_the_retry_branch_and_its_values() -> None:
 def test_claim_job_cannot_claim_a_non_retryable_failure() -> None:
     """The retry branch binds :true, so a stored false can never satisfy it."""
     repo, client = _repo()
-    client.update_item.return_value = {"Attributes": {"pk": "JOB#a", "state": "processing"}}
+    client.update_item.return_value = {"Attributes": _typed({"pk": "JOB#a", "state": "processing"})}
 
     repo.claim_job("a", NOW_EPOCH, NOW_ISO)
 
-    values = client.update_item.call_args.kwargs["ExpressionAttributeValues"]
+    values = _plain(client.update_item.call_args.kwargs["ExpressionAttributeValues"])
     assert values[":true"] is True
     assert (
         states.can_transition(states.FAILED, states.PROCESSING, retryable=False, attempt=1) is False
@@ -204,7 +225,7 @@ def test_claim_job_returns_none_when_the_guard_fails() -> None:
 
 def _updated_fields(kwargs: dict) -> dict:
     names = kwargs["ExpressionAttributeNames"]
-    values = kwargs["ExpressionAttributeValues"]
+    values = _plain(kwargs["ExpressionAttributeValues"])
     updated = {}
     for name_key, name in names.items():
         value_key = name_key.replace("#f", ":f")
@@ -226,9 +247,9 @@ def test_complete_job_writes_the_media_fields_and_the_completion_ttl() -> None:
     repo.complete_job("m3x9k2q1f7abc", fields, NOW_ISO)
 
     kwargs = client.update_item.call_args.kwargs
-    assert kwargs["Key"] == {"pk": "JOB#m3x9k2q1f7abc"}
+    assert _plain(kwargs["Key"]) == {"pk": "JOB#m3x9k2q1f7abc"}
     assert kwargs["ConditionExpression"] == "#state = :processing"
-    assert kwargs["ExpressionAttributeValues"][":processing"] == "processing"
+    assert _plain(kwargs["ExpressionAttributeValues"])[":processing"] == "processing"
     updated = _updated_fields(kwargs)
     assert updated["state"] == "completed"
     assert updated["updated_at"] == NOW_ISO
@@ -575,3 +596,47 @@ def test_fakes_expose_a_writes_view() -> None:
 
     repo.create_job_with_rate_increment(JOB, RATE_PK, 10, NOW_EPOCH)
     assert [call[0] for call in repo.writes] == ["create_job_with_rate_increment"]
+
+
+# --- the low-level client contract -------------------------------------------
+
+
+def test_writes_use_attribute_value_maps_not_plain_python() -> None:
+    """Regression: boto3.client("dynamodb") rejects plain values with a ParamValidationError."""
+    repo, client = _repo()
+
+    repo.create_job_with_rate_increment(JOB, RATE_PK, 10, NOW_EPOCH)
+
+    items = client.transact_write_items.call_args.kwargs["TransactItems"]
+    item = items[0]["Put"]["Item"]
+    assert item["state"] == {"S": "accepted"}
+    assert item["ttl"] == {"N": str(NOW_EPOCH + 2_592_000 + 604_800)}
+    for value in item.values():
+        assert isinstance(value, dict), value
+    assert items[1]["Update"]["Key"] == {"pk": {"S": RATE_PK}}
+    assert items[1]["Update"]["ExpressionAttributeValues"][":one"] == {"N": "1"}
+    assert items[1]["Update"]["ExpressionAttributeValues"][":limit"] == {"N": "10"}
+
+
+def test_reads_return_plain_numbers_that_json_can_serialise() -> None:
+    """DynamoDB only has N, which botocore decodes as Decimal; JSON cannot encode it."""
+    repo, client = _repo()
+    client.get_item.return_value = {
+        "Item": _typed({"pk": "JOB#x", "media_size_bytes": 1234, "produced_height": 720})
+    }
+
+    job = repo.get_job("x")
+
+    assert job == {"media_size_bytes": 1234, "produced_height": 720}
+    assert isinstance(job["media_size_bytes"], int)
+    json.dumps(job)
+
+
+def test_fractional_duration_survives_a_round_trip() -> None:
+    repo, client = _repo()
+    client.get_item.return_value = {"Item": _typed({"pk": "JOB#x", "duration_seconds": 12.5})}
+
+    job = repo.get_job("x")
+
+    assert job["duration_seconds"] == 12.5
+    json.dumps(job)
