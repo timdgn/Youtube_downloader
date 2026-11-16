@@ -310,6 +310,12 @@ Response, in order:
 1. `make bot-health ENV=<env>`. On a healthy bot the `url` line equals
    `terraform -chdir=infra output -raw bot_webhook_url` and `allowed_updates` is
    `['message']`.
+
+A freshly applied stack can sit in `ALARM` for up to an hour, because the alarm
+treats missing data as breaching and the first datapoint only arrives with the
+first hourly check. Run the check by hand to clear it immediately, and read
+`StateReason`: if it names missing datapoints rather than a `0`, the check simply
+had not run yet. An `OK` state after that is the proof, not a formality.
 2. When `url` is empty or `None`, read Telegram's full answer, which carries the reason:
 
    ```bash

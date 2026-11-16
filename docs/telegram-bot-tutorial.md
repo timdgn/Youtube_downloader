@@ -289,9 +289,11 @@ Then confirm with `make bot-health ENV=prod`. Exporting the new value in the sam
 shell matters: Terraform still holds the previous one and would write it back.
 
 **Re-register the webhook.** The registration is owned by Terraform, so let
-Terraform replace it rather than calling Telegram by hand:
+Terraform replace it rather than calling Telegram by hand. Every apply and every
+destroy needs `TF_VAR_telegram_bot_token` in the environment:
 
 ```bash
+export TF_VAR_telegram_bot_token="$(cat ~/.config/ytdl/telegram-bot-token)"
 make outputs ENV=prod >/dev/null
 terraform -chdir=infra apply -replace=terraform_data.telegram_webhook \
   -var-file=env/prod.tfvars -var image_tag="$(git rev-parse --short=12 HEAD)"
