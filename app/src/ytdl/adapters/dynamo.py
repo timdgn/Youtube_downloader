@@ -143,6 +143,22 @@ class DynamoRepository:
         """One account's interaction history, newest first."""
         return [_plain_item(item) for item in self._query_owner(owner_key, limit)]
 
+    def allocate_seq(self, seq_pk: str) -> int:
+        """Reserve the next per-account number; ADD creates the counter if absent.
+
+        The number is written onto the job afterwards, so a refused or duplicate
+        request burns it. Gaps are honest; a reused number would not be.
+        """
+        response = self._client.update_item(
+            TableName=self._table_name,
+            Key={"pk": _attribute(seq_pk)},
+            UpdateExpression="ADD #seq :one",
+            ExpressionAttributeNames={"#seq": "seq"},
+            ExpressionAttributeValues=_attribute_map({":one": 1}),
+            ReturnValues="ALL_NEW",
+        )
+        return int(_plain_item(response["Attributes"])["seq"])
+
     def _query_owner(self, owner_key: str, limit: int) -> list[dict[str, Any]]:
         response = self._client.query(
             TableName=self._table_name,

@@ -27,6 +27,7 @@ New or newly meaningful fields:
 | `requested_tier` | string | bot | `low`, `medium`, `high`, `veryhigh`, `mp3`. The vocabulary word, not the resolved label. Absent on API requests. |
 | `media_kind` | string | bot and API | `video` or `audio`. Defaults to `video` when absent, so records written before this feature still read correctly. |
 | `is_test` | boolean | bot | True for a `/test` job. Changes only the completion wording and bypasses the reuse lookup. |
+| `seq` | number | bot | Per-account sequence number, allocated once before the job transaction and never reused. `/list` prints it and `/delete` accepts it. |
 | `video_title` | string | worker | Source title, stripped of control characters and truncated to 80 characters. Display only, never in logs. |
 | `deleted_at` | string | bot | ISO 8601 UTC. Present means the file was deleted through the bot. The item survives for audit; the object does not. |
 
@@ -119,6 +120,16 @@ The discriminator makes a name unique even after a delete and a fresh download, 
 makes `/test` reproducible without colliding with an earlier test item. `/list` prints
 exactly this string, and `/delete` accepts exactly this string.
 
+**Sequence number** is allocated per account and stored on the job as `seq`. One counter
+item per account, `SEQ#<telegram id>`, is incremented with an atomic `ADD` before the job
+transaction, and the new value is written onto the job. The number is therefore unique per
+account, never reused, and stable for the life of the item. A refused or duplicate request
+burns a number without creating a job, so the sequence can have gaps. Numbers are shown by
+`/list` and accepted by `/delete`; the name remains accepted as the unambiguous identifier.
+
+A job written before this field existed has no `seq`. It prints without a number and stays
+deletable by name.
+
 ---
 
 ## Entity: Approved Account (configuration)
@@ -209,4 +220,5 @@ Statements the test suite asserts, in addition to the ten in 001.
     query string.
 17. A request from an account that is not on the allowlist produces no job, no rate
     increment, and no interaction item.
-18. The name printed by `/list` is the only name `/delete` accepts.
+18. The name printed by `/list` and the number printed beside it each identify exactly one
+    live item, and `/delete` accepts either. A number is never reused for another item.

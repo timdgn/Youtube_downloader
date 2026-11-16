@@ -171,7 +171,10 @@ Example: "https://www.youtube.com/watch?v=example medium"
 - **FR-010**: The `/help` reply MUST contain the help text fixed in the Command Surface section, complete and unaltered in wording, order, and example.
 - **FR-011**: The bot MUST answer `/start` with a greeting that points to `/help`.
 - **FR-012**: The `/list` reply MUST show, for each of the operator's stored items, a name unique within that operator's library, the source video, the quality actually produced, the size, the age, and the days remaining before automatic deletion, and MUST split across messages, without loss or duplication, when one message cannot hold the list.
-- **FR-013**: `/delete` MUST delete only the item whose name is given, MUST confirm the deletion by name, and MUST delete nothing when the name is unknown or ambiguous, listing the candidates in the ambiguous case.
+- **FR-013**: `/delete` MUST accept either the number printed beside an item by `/list` or
+  its name, MUST delete only the item so identified, MUST confirm the deletion by name, and
+  MUST delete nothing when the number or name is unknown. A number MUST NOT be reused for a
+  different item.
 - **FR-014**: `/empty` MUST require an explicit confirmation before deleting, MUST then delete every item belonging to the operator, MUST report how many were removed, and MUST report plainly when there was nothing to remove.
 - **FR-015**: Deleting an item MUST remove its stored file, and a later request for the same video and tier MUST download it again rather than offer a dead link.
 - **FR-016**: `/history` MUST list the operator's most recent interactions with a timestamp, what was requested, and the outcome, and MUST contain no access tokens and no download links.

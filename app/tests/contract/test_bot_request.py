@@ -421,3 +421,42 @@ def test_the_invalid_link_sentence_is_the_service_sentence() -> None:
     _bot(dynamo, media, queue, telegram).handle(_event("https://vimeo.com/123456789"))
 
     assert telegram.messages[0]["text"] == errors.MESSAGES[errors.INVALID_INPUT]
+
+
+# --- sequence numbers --------------------------------------------------------
+
+
+def test_the_first_request_of_an_account_gets_number_one() -> None:
+    dynamo, media, queue = FakeDynamoRepository(), FakeMediaStore(), FakeJobQueue()
+
+    _bot(dynamo, media, queue, FakeTelegramClient()).handle(_event(f"{VIDEO_URL} medium"))
+
+    (job,) = _jobs(dynamo)
+    assert job["seq"] == 1
+    assert dynamo.items["SEQ#" + str(USER_ID)]["seq"] == 1
+
+
+def test_a_second_request_gets_the_next_number() -> None:
+    dynamo, media, queue = FakeDynamoRepository(), FakeMediaStore(), FakeJobQueue()
+    bot = _bot(dynamo, media, queue, FakeTelegramClient())
+
+    bot.handle(_event(f"{VIDEO_URL} medium", update_id=1))
+    bot.handle(_event(f"{VIDEO_URL} high", update_id=2))
+
+    numbered = sorted(job["seq"] for job in _jobs(dynamo))
+    assert numbered == [1, 2]
+
+
+def test_a_refused_request_burns_a_number_without_creating_a_job() -> None:
+    dynamo, media, queue = FakeDynamoRepository(), FakeMediaStore(), FakeJobQueue()
+    bot = _bot(dynamo, media, queue, FakeTelegramClient())
+    rate_pk = keys.rate_key(keys.rate_window(NOW_EPOCH), keys.owner_job_key(USER_ID))
+    dynamo.rate_counts[rate_pk] = 10
+
+    bot.handle(_event(f"{VIDEO_URL} medium"))
+    dynamo.rate_counts[rate_pk] = 0
+    bot.handle(_event(f"{VIDEO_URL} high", update_id=2))
+
+    (job,) = _jobs(dynamo)
+    assert job["seq"] == 2
+    assert dynamo.items["SEQ#" + str(USER_ID)]["seq"] == 2

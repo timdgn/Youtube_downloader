@@ -284,6 +284,8 @@ class Bot:
             "update_id": update_id,
             "requested_tier": tier.word,
             "is_test": True if is_test else None,
+            # Reserved before the transaction, so it is stable for the item's life.
+            "seq": self._repo.allocate_seq(keys.owner_seq_key(sender)),
         }
         job = submissions.build_job(
             reference,
@@ -514,17 +516,24 @@ class Bot:
             self._interaction(update_id, sender, "/delete", "command:delete")
             return
 
-        found = library.delete_item(
-            self._repo,
-            self._store,
-            keys.owner_job_key(sender),
-            name,
-            self._epoch(),
-        )
-        self._reply(
-            chat_id,
-            (messages.DELETED if found else messages.NO_SUCH_ITEM).format(name=name),
-        )
+        owner_key = keys.owner_job_key(sender)
+        now_epoch = self._epoch()
+        if name.isdigit():
+            job = library.delete_numbered(self._repo, self._store, owner_key, int(name), now_epoch)
+            text = (
+                messages.DELETED_NUMBER.format(number=int(name), name=keys.display_name(job))
+                if job is not None
+                else messages.NO_SUCH_NUMBER.format(number=int(name))
+            )
+        else:
+            job = library.delete_item(self._repo, self._store, owner_key, name, now_epoch)
+            text = (
+                messages.DELETED.format(name=name)
+                if job is not None
+                else messages.NO_SUCH_ITEM.format(name=name)
+            )
+
+        self._reply(chat_id, text)
         self._interaction(update_id, sender, f"/delete {name}", "command:delete")
 
     def _empty(self, update_id: Any, sender: Any, chat_id: Any, argument: str) -> None:

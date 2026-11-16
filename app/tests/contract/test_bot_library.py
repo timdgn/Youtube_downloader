@@ -120,6 +120,7 @@ def _seed(
     owner: int = USER_ID,
     video_id: str = VIDEO_ID,
     deleted_at: str | None = None,
+    seq: int | None = None,
 ) -> dict[str, Any]:
     job_id = f"m3x9k2q1f{index:04d}"
     job = {
@@ -133,6 +134,7 @@ def _seed(
         "chat_id": str(owner),
         "update_id": 1,
         "requested_tier": tier,
+        "seq": index if seq is None else seq,
         "media_kind": "video",
         "produced_quality": "720p",
         "video_title": f"Stored video {index}",
@@ -364,3 +366,85 @@ def test_a_command_writes_one_interaction_line(text: str, expected: str) -> None
     (interaction,) = [item for key, item in dynamo.items.items() if key.startswith("UPD#")]
     assert interaction["text"] == expected
     assert interaction["outcome"].startswith("command:")
+
+
+# --- numbers -----------------------------------------------------------------
+
+
+def test_list_prints_each_item_number_newest_first() -> None:
+    dynamo, media = FakeDynamoRepository(), FakeMediaStore()
+    telegram = FakeTelegramClient()
+    _seed(dynamo, media, index=1, tier="medium")
+    _seed(dynamo, media, index=2, tier="high")
+
+    _bot(dynamo, media, telegram=telegram).handle(_event("/list"))
+
+    lines = telegram.messages[0]["text"].splitlines()
+    assert lines[0].startswith("2. ")
+    assert lines[1].startswith("1. ")
+
+
+def test_delete_accepts_the_number_the_list_printed() -> None:
+    dynamo, media = FakeDynamoRepository(), FakeMediaStore()
+    telegram = FakeTelegramClient()
+    first = _seed(dynamo, media, index=1, tier="medium")
+    second = _seed(dynamo, media, index=2, tier="high")
+    bot = _bot(dynamo, media, telegram=telegram)
+
+    bot.handle(_event("/list", update_id=1))
+    bot.handle(_event("/delete 2", update_id=2))
+
+    assert telegram.messages[-1]["text"] == (f"Deleted 2: {keys.display_name(second)}.")
+    assert _is_deleted(dynamo, second)
+    assert not _is_deleted(dynamo, first)
+    assert second["media_key"] not in media.objects
+    assert first["media_key"] in media.objects
+
+
+def test_delete_by_unknown_number_deletes_nothing() -> None:
+    dynamo, media = FakeDynamoRepository(), FakeMediaStore()
+    telegram = FakeTelegramClient()
+    job = _seed(dynamo, media, index=1)
+
+    _bot(dynamo, media, telegram=telegram).handle(_event("/delete 99"))
+
+    assert telegram.messages == [{"chat_id": CHAT_ID, "text": "No item is numbered 99."}]
+    assert not _is_deleted(dynamo, job)
+    assert job["media_key"] in media.objects
+    assert [call[0] for call in media.writes] == []
+
+
+def test_delete_by_number_cannot_reach_another_account() -> None:
+    dynamo, media = FakeDynamoRepository(), FakeMediaStore()
+    telegram = FakeTelegramClient()
+    other = _seed(dynamo, media, owner=999999999, seq=1)
+
+    _bot(dynamo, media, telegram=telegram).handle(_event("/delete 1"))
+
+    assert telegram.messages == [{"chat_id": CHAT_ID, "text": "No item is numbered 1."}]
+    assert not _is_deleted(dynamo, other)
+
+
+def test_the_name_still_deletes_the_same_item() -> None:
+    dynamo, media = FakeDynamoRepository(), FakeMediaStore()
+    telegram = FakeTelegramClient()
+    job = _seed(dynamo, media, index=1)
+
+    _bot(dynamo, media, telegram=telegram).handle(_event(f"/delete {keys.display_name(job)}"))
+
+    assert telegram.messages == [{"chat_id": CHAT_ID, "text": f"Deleted {keys.display_name(job)}."}]
+    assert _is_deleted(dynamo, job)
+
+
+def test_a_number_still_names_the_same_item_after_a_new_download() -> None:
+    dynamo, media = FakeDynamoRepository(), FakeMediaStore()
+    telegram = FakeTelegramClient()
+    first = _seed(dynamo, media, index=1, tier="medium")
+    bot = _bot(dynamo, media, telegram=telegram)
+
+    bot.handle(_event("/list", update_id=1))
+    bot.handle(_event(f"https://www.youtube.com/watch?v={VIDEO_ID} high", update_id=2))
+    bot.handle(_event("/delete 1", update_id=3))
+
+    assert telegram.messages[-1]["text"] == f"Deleted 1: {keys.display_name(first)}."
+    assert _is_deleted(dynamo, first)

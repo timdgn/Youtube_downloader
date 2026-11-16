@@ -124,3 +124,8 @@ def test_display_name_uses_only_the_last_four_characters_of_the_job_id() -> None
     short = {"job_id": "abcd", "video_id": VIDEO_ID, "requested_tier": "low"}
 
     assert keys.display_name(short) == f"{VIDEO_ID}-low-abcd.mp4"
+
+
+def test_owner_seq_key_is_the_sequence_counter() -> None:
+    assert keys.owner_seq_key(123456789) == "SEQ#123456789"
+    assert keys.owner_seq_key("123456789") == "SEQ#123456789"

@@ -29,6 +29,11 @@ def interaction_pk(update_id: int | str) -> str:
     return f"UPD#{update_id}"
 
 
+def owner_seq_key(user_id: int | str) -> str:
+    """The per-account counter that numbers stored items (FR-013)."""
+    return f"SEQ#{user_id}"
+
+
 def display_name(job: dict[str, Any]) -> str:
     """The one name ``/list`` prints and ``/delete`` accepts (invariant 18).
 

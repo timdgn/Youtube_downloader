@@ -203,8 +203,9 @@ answers `Already working on ...` and creates nothing new.
 
 | Command | What it does |
 |---------|--------------|
-| `/list` | One line per stored item, newest first |
-| `/delete <name>` | Removes exactly the item whose name you copied from `/list` |
+| `/list` | One numbered line per stored item, newest first |
+| `/delete <n>` | Removes the item carrying that number |
+| `/delete <name>` | Removes the item with that exact name |
 | `/empty` | Reports how many items it would delete and asks you to confirm |
 | `/empty confirm` | Deletes them and states the count |
 | `/history` | Your last ten interactions with their outcome |
@@ -214,19 +215,27 @@ answers `Already working on ...` and creates nothing new.
 A `/list` line looks like this:
 
 ```text
-dQw4w9WgXcQ-high-k2q1.mp4 | Some video title | 720p | 182.4 MB | 2d 3h old | 4 days left
+3. dQw4w9WgXcQ-high-k2q1.mp4 | Some video title | 720p | 182.4 MB | 2d 3h old | 4 days left
 ```
 
-The first field is the name. It is the only string `/delete` accepts:
+The leading number is allocated once, when the item is created, and never reused. It is
+stable: after another download or another delete, `3` still means the same file. Numbers
+descend because the list is newest first. The service number and the file name both
+identify exactly one item, so either works:
 
 ```text
+/delete 3
 /delete dQw4w9WgXcQ-high-k2q1.mp4
 ```
 
-You receive `Deleted dQw4w9WgXcQ-high-k2q1.mp4.` and the object is gone from S3.
-The job record survives with a `deleted_at` timestamp, so history keeps meaning.
-Send the original request again and the video is downloaded afresh rather than a
-dead link being offered.
+You receive `Deleted 3: dQw4w9WgXcQ-high-k2q1.mp4.` or `Deleted
+dQw4w9WgXcQ-high-k2q1.mp4.` and the object is gone from S3. The job record survives with a
+`deleted_at` timestamp, so history keeps meaning. Send the original request again and the
+video is downloaded afresh rather than a dead link being offered.
+
+A number that matches nothing answers `No item is numbered 9.` and deletes nothing. A
+number can be skipped: a request refused by the hourly limit burns its number without
+creating an item, which is why the list can read `5, 4, 2, 1`.
 
 `/empty` never deletes on its own. Only the literal word `confirm` does. A typo
 such as `/empty yes` is treated as a bare `/empty`, so it cannot delete anything.
@@ -248,6 +257,7 @@ like any other request. Nothing loops or schedules it again.
 | `Send one link at a time, followed by one resolution word.` | Two links in one message | One link per message |
 | `Unknown resolution "hq". Use low, medium, high, veryhigh or mp3.` | A word outside the vocabulary | Use one of the five |
 | `Send a YouTube link followed by a resolution word, or /help.` | No link in the message | Send a link |
+| `No item is numbered 9.` | Nothing live carries that number | Run `/list` and use a number it prints |
 | `The submitted link is not a supported single YouTube video.` | Foreign host, playlist, channel, or live link | Send a single video link |
 | `Hourly limit reached. Capacity returns at 2026-11-16 11:00 UTC.` | Ten requests in this hour | Wait for the stated time |
 | `The source refused this video. It may be private, removed, or unavailable in this region.` | `unsupported_media`, not retryable | Do not resend; the content is out of scope |

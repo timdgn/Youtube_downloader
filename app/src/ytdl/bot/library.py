@@ -50,16 +50,31 @@ def delete_item(
     owner_key: str,
     name: str,
     now_epoch: int,
-) -> bool:
-    """Delete exactly the named item; False when no live item carries that name."""
-    jobs = live_items(repo.query_owner_jobs(owner_key, OWNER_LIMIT), now_epoch)
-    target = next((job for job in jobs if keys.display_name(job) == name), None)
-    if target is None:
-        return False
+) -> dict[str, Any] | None:
+    """Delete exactly the named item, or return None when no live item carries it."""
+    live = live_items(repo.query_owner_jobs(owner_key, OWNER_LIMIT), now_epoch)
+    target = next((job for job in live if keys.display_name(job) == name), None)
+    return None if target is None else _remove(repo, store, target, now_epoch)
 
-    store.delete_object(_media(target))
-    repo.mark_deleted(str(target["job_id"]), _iso(now_epoch))
-    return True
+
+def delete_numbered(
+    repo: Any,
+    store: Any,
+    owner_key: str,
+    number: int,
+    now_epoch: int,
+) -> dict[str, Any] | None:
+    """Delete the item carrying ``number``, or return None when no live item has it."""
+    live = live_items(repo.query_owner_jobs(owner_key, OWNER_LIMIT), now_epoch)
+    target = next((job for job in live if job.get("seq") == number), None)
+    return None if target is None else _remove(repo, store, target, now_epoch)
+
+
+def _remove(repo: Any, store: Any, job: dict[str, Any], now_epoch: int) -> dict[str, Any]:
+    """Remove the object first, then set the overlay; the reverse can list a dead item."""
+    store.delete_object(_media(job))
+    repo.mark_deleted(str(job["job_id"]), _iso(now_epoch))
+    return job
 
 
 def empty_library(
@@ -98,7 +113,7 @@ def render_history(
 
 
 def _line(job: dict[str, Any], now_epoch: int) -> str:
-    return " | ".join(
+    fields = " | ".join(
         (
             keys.display_name(job),
             _title(job),
@@ -108,6 +123,13 @@ def _line(job: dict[str, Any], now_epoch: int) -> str:
             _days_left(job.get("media_expires_at"), now_epoch),
         )
     )
+    return f"{job['seq']}. {fields}" if _number(job.get("seq")) is not None else fields
+
+
+def _number(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
 
 
 def _is_live(job: dict[str, Any], now_epoch: int) -> bool:

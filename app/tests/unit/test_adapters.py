@@ -898,3 +898,36 @@ def test_delete_object_does_not_swallow_other_errors() -> None:
 
     with pytest.raises(ClientError):
         store.delete_object("output/a/dQw4w9WgXcQ.mp4")
+
+
+# --- the per-account sequence ------------------------------------------------
+
+
+def test_allocate_seq_increments_the_counter_and_returns_the_new_value() -> None:
+    repo, client = _repo()
+    client.update_item.return_value = {"Attributes": _typed({"pk": "SEQ#123", "seq": 4})}
+
+    assert repo.allocate_seq("SEQ#123") == 4
+
+    kwargs = client.update_item.call_args.kwargs
+    assert _plain(kwargs["Key"]) == {"pk": "SEQ#123"}
+    assert kwargs["UpdateExpression"] == "ADD #seq :one"
+    assert kwargs["ExpressionAttributeNames"] == {"#seq": "seq"}
+    assert kwargs["ExpressionAttributeValues"] == {":one": {"N": "1"}}
+    assert kwargs["ReturnValues"] == "ALL_NEW"
+
+
+def test_allocate_seq_creates_the_counter_when_it_is_absent() -> None:
+    """ADD creates the item, so the first request of an account answers 1."""
+    repo, client = _repo()
+    client.update_item.return_value = {"Attributes": _typed({"pk": "SEQ#123", "seq": 1})}
+
+    assert repo.allocate_seq("SEQ#123") == 1
+
+
+def test_the_fake_allocates_a_new_number_each_time() -> None:
+    repo = FakeDynamoRepository()
+
+    assert repo.allocate_seq("SEQ#1") == 1
+    assert repo.allocate_seq("SEQ#1") == 2
+    assert repo.allocate_seq("SEQ#2") == 1

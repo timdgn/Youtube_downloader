@@ -52,8 +52,8 @@ and the storage model change together.
 | Command | Reply | Side effect |
 |---------|-------|-------------|
 | `/start` | `Hello. Send a YouTube link with a resolution word and I will fetch it.\n\nSend /help for the full command list.` | None |
-| `/list` | One line per stored item, or `No videos are stored.` | None |
-| `/delete <name>` | `Deleted <name>.` or `No item is named <name>.` | Object deleted, item marked deleted |
+| `/list` | One numbered line per stored item, or `No videos are stored.` | None |
+| `/delete <n>` or `/delete <name>` | `Deleted <n>: <name>.` / `Deleted <name>.` / `No item is numbered <n>.` / `No item is named <name>.` | Object deleted, item marked deleted |
 | `/empty` | `This will delete N items. Reply "/empty confirm" to proceed.` | None until confirmed |
 | `/empty confirm` | `Deleted N items.` / `Deleted N items; M remain, reply "/empty confirm" again.` / `There was nothing to delete.` | Every live item up to the per-confirmation cap |
 | `/history` | Up to ten lines, or `No history yet.` | None |
@@ -149,6 +149,18 @@ Download (expires <YYYY-MM-DD HH:MM> UTC):
 The file stays available until <YYYY-MM-DD>.
 ```
 
+**Deleted** (by number, where the name is repeated so the chat stays unambiguous):
+
+```text
+Deleted <n>: <name>.
+```
+
+**Unknown number**:
+
+```text
+No item is numbered <n>.
+```
+
 **In progress**:
 
 ```text
@@ -190,21 +202,26 @@ This bot only works in a private chat.
 
 ## `/list` format
 
-One line per item, in descending creation order:
+One line per item, in descending creation order. Each line starts with the item's number:
 
 ```text
-<video_id>-<tier>-<job_id last 4>.<ext> | <title> | <produced_quality> | <size> | <age> old | <days> days left
+<n>. <video_id>-<tier>-<job_id last 4>.<ext> | <title> | <produced_quality> | <size> | <age> old | <days> days left
 ```
 
 Example:
 
 ```text
-dQw4w9WgXcQ-high-k2q1.mp4 | Some video title | 720p | 182.4 MB | 2d 3h old | 4 days left
+3. dQw4w9WgXcQ-high-k2q1.mp4 | Some video title | 720p | 182.4 MB | 2d 3h old | 4 days left
 ```
+
+Numbers descend because the list is newest first. They are allocated once per account and
+never reused, so a number read here still names the same file after another download or
+delete. An item written before numbers existed prints without one and is deleted by name.
 
 | Field | Derivation |
 |-------|------------|
-| Name | Derived from the job, never stored. It is the only string `/delete` accepts |
+| Number | The job's stored `seq`, allocated per account before the job is written |
+| Name | Derived from the job, never stored. It is accepted by `/delete`, as is the number |
 | Title | Stored on the job by the worker, control characters stripped, 80 characters at most |
 | Quality | `produced_quality`, the label recorded for the stored file |
 | Size | `media_size_bytes`, one decimal place |

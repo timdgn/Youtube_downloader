@@ -15,6 +15,7 @@ DAY = 86400
 def _job(**overrides: Any) -> dict[str, Any]:
     job: dict[str, Any] = {
         "job_id": "m3x9k2q1f7k2q1",
+        "seq": 3,
         "state": "completed",
         "video_id": VIDEO_ID,
         "requested_tier": "high",
@@ -34,7 +35,7 @@ def test_one_line_carries_every_documented_field() -> None:
     line = render_list([_job()], NOW)
 
     assert line == (
-        "dQw4w9WgXcQ-high-k2q1.mp4 | Some video title | 720p | 182.4 MB | 2d 3h old | 3 days left"
+        "3. dQw4w9WgXcQ-high-k2q1.mp4 | Some video title | 720p | 182.4 MB | 2d 3h old | 3 days left"
     )
 
 
@@ -48,7 +49,7 @@ def test_an_audio_item_prints_its_mp3_name_and_quality() -> None:
 
     line = render_list([job], NOW)
 
-    assert line.split(" | ")[0] == "dQw4w9WgXcQ-mp3-k2q1.mp3"
+    assert line.split(" | ")[0] == "3. dQw4w9WgXcQ-mp3-k2q1.mp3"
     assert line.split(" | ")[2] == "mp3"
 
 
@@ -93,8 +94,8 @@ def test_the_query_order_is_preserved() -> None:
 
     lines = render_list(jobs, NOW).splitlines()
 
-    assert lines[0].startswith("aaaaaaaaaaa-high-0001.mp4")
-    assert lines[1].startswith("bbbbbbbbbbb-high-0002.mp4")
+    assert "aaaaaaaaaaa-high-0001.mp4" in lines[0]
+    assert "bbbbbbbbbbb-high-0002.mp4" in lines[1]
 
 
 def test_an_empty_library_says_so() -> None:
@@ -126,3 +127,13 @@ def test_live_items_keeps_only_what_can_be_downloaded() -> None:
     ]
 
     assert [job["job_id"] for job in live_items(jobs, NOW)] == ["live0000000001"]
+
+
+def test_a_job_without_a_number_prints_without_one() -> None:
+    job = _job()
+    job.pop("seq")
+
+    line = render_list([job], NOW)
+
+    assert line.startswith("dQw4w9WgXcQ-high-k2q1.mp4 | ")
+    assert " . " not in line

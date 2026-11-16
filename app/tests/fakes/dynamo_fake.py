@@ -25,6 +25,7 @@ _WRITE_METHODS = frozenset(
         "fail_job",
         "put_interaction",
         "mark_deleted",
+        "allocate_seq",
     }
 )
 
@@ -99,6 +100,12 @@ class FakeDynamoRepository:
     def query_interactions(self, owner_key: str, limit: int = 10) -> list[dict[str, Any]]:
         self.calls.append(("query_interactions", {"owner_key": owner_key, "limit": limit}))
         return [deepcopy(item) for item in self._owned(owner_key, limit)]
+
+    def allocate_seq(self, seq_pk: str) -> int:
+        self.calls.append(("allocate_seq", {"seq_pk": seq_pk}))
+        item = self.items.setdefault(seq_pk, {"pk": seq_pk, "seq": 0})
+        item["seq"] = int(item.get("seq", 0)) + 1
+        return int(item["seq"])
 
     def put_interaction(self, item: dict[str, Any]) -> None:
         self.calls.append(("put_interaction", {"item": deepcopy(item)}))
