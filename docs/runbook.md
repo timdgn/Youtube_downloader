@@ -62,8 +62,21 @@ Budget context: the documented profile is 100 videos per month at 15 minutes eac
 7-day retention, expected at roughly $1.40 (research D-02). The $10 ceiling is deliberate
 headroom, not a restatement of the estimate.
 
-Observed at validation: `TODO(T100-T102)` (worker p95 duration, actual monthly cost,
-alarm delivery check).
+Observed at validation: not yet recorded. The three figures in this paragraph (worker
+p95 duration, actual monthly cost, and a delivered test alarm) require a deployed stack
+with AWS credentials, and were not captured in the session that built this service. Run
+`make test-e2e`, then read the CloudWatch metrics for the `worker` function and the
+Billing console, and record the numbers here before relying on the alarms.
+
+Two prerequisites for these signals:
+
+- **Request logs.** HTTP API access logging needs no account-level CloudWatch role (unlike
+  REST APIs). If request log lines never appear in `/aws/apigateway/<prefix>`, check that
+  per-account API Gateway setting first. It is deliberately not managed by Terraform,
+  because it is an account-wide toggle.
+- **Billing metric.** `AWS/Billing EstimatedCharges` only publishes in `us-east-1` and
+  only once billing data exists for the account. A brand-new account can show the two
+  budget alarms in `INSUFFICIENT_DATA` for a day. That is not a broken alarm.
 
 ---
 
