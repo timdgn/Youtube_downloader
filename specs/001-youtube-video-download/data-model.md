@@ -199,7 +199,7 @@ The deployment unit. All of it is Terraform variables; none of it is code branch
 | Setting | dev default | prod default | Notes |
 |---------|-------------|--------------|-------|
 | `environment` | `dev` | `prod` | Used in every resource name and tag |
-| `aws_region` | `eu-west-1` | `eu-west-1` | |
+| `aws_region` | `eu-west-3` | `eu-west-3` | |
 | `max_height` | 1080 | 1080 | Requested values above it are capped |
 | `max_duration_seconds` | 3600 | 3600 | Rejected before media transfer |
 | `max_output_bytes` | 4294967296 | 4294967296 | |

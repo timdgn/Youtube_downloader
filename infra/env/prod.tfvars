@@ -7,7 +7,7 @@
 # the first production submission (constitution principle V).
 
 environment = "prod"
-aws_region  = "eu-west-1"
+aws_region  = "eu-west-3"
 
 max_height                  = 1080
 max_duration_seconds        = 3600

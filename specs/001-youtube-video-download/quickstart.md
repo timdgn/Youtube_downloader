@@ -18,7 +18,7 @@ expected outcomes, not implementation code.
 | AWS account | Empty is fine. Permissions to create S3, DynamoDB, SQS, Lambda, ECR, IAM, API Gateway, SSM, CloudWatch, SNS. |
 | Credentials | An AWS profile exported in the shell. No long-lived keys in any file in the repo. |
 | Tooling | Terraform ≥ 1.10, AWS CLI v2, Docker with `buildx`, `make`, `curl`, `jq` |
-| Region | One region for everything, `eu-west-1` in the examples |
+| Region | One region for everything, `eu-west-3` in the examples |
 | Content | A URL for a short public video you are entitled to download, and one you know will fail (private or deleted) |
 
 Budget: the documented ceiling is $10 per month (research D-02). Nothing in this guide
@@ -45,7 +45,7 @@ Expected: one S3 bucket, versioning on, public access blocked, `Project` and
 ## 2. Deploy the dev environment
 
 ```bash
-export AWS_REGION=eu-west-1
+export AWS_REGION=eu-west-3
 export ENV=dev
 make deploy ENV=dev
 ```

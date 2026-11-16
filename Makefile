@@ -15,6 +15,12 @@ LOCAL_IMG ?= ytdl-local
 ENV       ?=
 STATE_BUCKET_PREFIX ?= ytdl-tfstate
 
+# Paris. Exported so every AWS CLI call in a recipe targets the same region as the
+# stack, whatever the profile's default region happens to be. The Billing alarms
+# are the one exception: they read us-east-1, where that metric is published.
+AWS_REGION ?= eu-west-3
+export AWS_REGION
+
 .PHONY: help install image image-api image-worker test test-unit test-contract \
         test-e2e lint fmt verify-image tf-check bootstrap deploy destroy \
         verify-destroy verify-retention verify-idempotency token
@@ -41,11 +47,11 @@ install:
 image: image-api image-worker
 
 image-api:
-	docker buildx build --platform linux/arm64 --target api \
+	docker buildx build --platform linux/arm64 --provenance=false --sbom=false --target api \
 		-t $(LOCAL_IMG):$(IMAGE_TAG)-api --load app
 
 image-worker:
-	docker buildx build --platform linux/arm64 --target worker \
+	docker buildx build --platform linux/arm64 --provenance=false --sbom=false --target worker \
 		-t $(LOCAL_IMG):$(IMAGE_TAG)-worker --load app
 
 test: test-unit test-contract
@@ -81,10 +87,10 @@ verify-image:
 
 tf-check:
 	terraform -chdir=infra fmt -check -recursive
-	terraform -chdir=infra init -backend=false -input=false >/dev/null
+	@test -d infra/.terraform || terraform -chdir=infra init -backend=false -input=false >/dev/null
 	terraform -chdir=infra validate
 	terraform -chdir=infra/bootstrap fmt -check -recursive
-	terraform -chdir=infra/bootstrap init -backend=false -input=false >/dev/null
+	@test -d infra/bootstrap/.terraform || terraform -chdir=infra/bootstrap init -backend=false -input=false >/dev/null
 	terraform -chdir=infra/bootstrap validate
 
 # ------------------------------------------------------------------------------
@@ -97,7 +103,7 @@ bootstrap:
 	test -n "$$ACCOUNT" || { echo "no AWS credentials in this shell"; exit 1; }; \
 	terraform -chdir=infra/bootstrap init -input=false; \
 	terraform -chdir=infra/bootstrap apply -input=false -auto-approve \
-		-var state_bucket=$(STATE_BUCKET_PREFIX)-$$ACCOUNT; \
+		-var state_bucket=$(STATE_BUCKET_PREFIX)-$$ACCOUNT -var aws_region=$(AWS_REGION); \
 	echo "state bucket ready: $(STATE_BUCKET_PREFIX)-$$ACCOUNT"
 
 deploy:
@@ -114,9 +120,12 @@ deploy:
 		-target=aws_ecr_repository.app; \
 	ECR=$$(terraform -chdir=infra output -raw ecr_repository_url); \
 	test -n "$$ECR" || { echo "no ECR repository url in outputs"; exit 1; }; \
-	docker buildx build --platform linux/arm64 --target api \
+	REGISTRY=$$(echo "$$ECR" | cut -d/ -f1); \
+	aws ecr get-login-password --region $(AWS_REGION) \
+		| docker login --username AWS --password-stdin "$$REGISTRY"; \
+	docker buildx build --platform linux/arm64 --provenance=false --sbom=false --target api \
 		-t $$ECR:$(IMAGE_TAG)-api --push app; \
-	docker buildx build --platform linux/arm64 --target worker \
+	docker buildx build --platform linux/arm64 --provenance=false --sbom=false --target worker \
 		-t $$ECR:$(IMAGE_TAG)-worker --push app; \
 	terraform -chdir=infra apply -input=false -auto-approve \
 		-var-file=env/$(ENV).tfvars -var image_tag=$(IMAGE_TAG)

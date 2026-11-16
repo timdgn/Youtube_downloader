@@ -19,6 +19,12 @@ over the duration or size cap, downloads with a pinned yt-dlp, remuxes to MP4 wi
 copy (no re-encoding), uploads to private S3, and marks the job complete. The download
 link is a presigned S3 URL valid for 60 minutes. Media expires after 7 days.
 
+All resources live in **eu-west-3 (Paris)**: the bucket, the table, the queues, both
+functions, the HTTP API and the ECR repository. The only exception is the two budget
+alarms, which read `AWS/Billing` in `us-east-1` because that metric is published nowhere
+else. `AWS_REGION` defaults to `eu-west-3` in the `Makefile` so every CLI check targets
+the same region as the stack.
+
 ---
 
 ## 2. Failure catalogue

@@ -12,6 +12,25 @@ resource "aws_sns_topic_subscription" "alarms_email" {
   endpoint  = var.alarm_email
 }
 
+# A CloudWatch alarm can only notify a topic in its own region, and the two budget
+# alarms must live in us-east-1 because AWS/Billing is published only there. That
+# means a second topic, and a second subscription for the same address.
+resource "aws_sns_topic" "billing" {
+  provider = aws.us_east_1
+  name     = "${local.name_prefix}-alarms-us-east-1"
+
+  tags = local.tags
+}
+
+resource "aws_sns_topic_subscription" "billing_email" {
+  provider = aws.us_east_1
+  count    = var.alarm_email != "" ? 1 : 0
+
+  topic_arn = aws_sns_topic.billing.arn
+  protocol  = "email"
+  endpoint  = var.alarm_email
+}
+
 resource "aws_cloudwatch_metric_alarm" "api_5xx" {
   alarm_name          = "${local.name_prefix}-api-5xx"
   alarm_description   = "The API returned a 5xx. Check the api log group for the failing route."
@@ -127,8 +146,8 @@ resource "aws_cloudwatch_metric_alarm" "billing_5_usd" {
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "missing"
 
-  alarm_actions = [aws_sns_topic.alarms.arn]
-  ok_actions    = [aws_sns_topic.alarms.arn]
+  alarm_actions = [aws_sns_topic.billing.arn]
+  ok_actions    = [aws_sns_topic.billing.arn]
 
   tags = local.tags
 }
@@ -148,8 +167,8 @@ resource "aws_cloudwatch_metric_alarm" "billing_10_usd" {
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "missing"
 
-  alarm_actions = [aws_sns_topic.alarms.arn]
-  ok_actions    = [aws_sns_topic.alarms.arn]
+  alarm_actions = [aws_sns_topic.billing.arn]
+  ok_actions    = [aws_sns_topic.billing.arn]
 
   tags = local.tags
 }

@@ -3,7 +3,7 @@
 #     -var-file=env/dev.tfvars -var image_tag=<git sha>
 
 environment = "dev"
-aws_region  = "eu-west-1"
+aws_region  = "eu-west-3"
 
 max_height                  = 1080
 max_duration_seconds        = 3600

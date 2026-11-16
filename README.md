@@ -20,7 +20,7 @@ redistribute copyrighted material. See `app/THIRD-PARTY-NOTICES.md`.
 | AWS account | Permissions to create S3, DynamoDB, SQS, Lambda, ECR, IAM, API Gateway, SSM, CloudWatch and SNS |
 | Credentials | An AWS profile exported in your shell. No keys in any file in this repo |
 | Tooling | Terraform >= 1.10, AWS CLI v2, Docker with `buildx`, `make`, `python3.12`, `curl`, `jq` |
-| Region | One region, `eu-west-1` in the examples |
+| Region | One region for everything: `eu-west-3`, Paris |
 
 The account is expected to be empty, or at least free of resources named `ytdl-*`.
 

@@ -16,7 +16,7 @@ variable "state_bucket" {
 variable "aws_region" {
   description = "Region that holds the state bucket and the application resources."
   type        = string
-  default     = "eu-west-1"
+  default     = "eu-west-3"
 }
 
 provider "aws" {

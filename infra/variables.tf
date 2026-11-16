@@ -15,7 +15,7 @@ variable "environment" {
 variable "aws_region" {
   description = "Region that holds all application resources."
   type        = string
-  default     = "eu-west-1"
+  default     = "eu-west-3"
 }
 
 variable "max_height" {

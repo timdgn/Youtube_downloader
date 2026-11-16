@@ -2,6 +2,6 @@
 # account id at run time, so this file never carries an account number.
 bucket       = "ytdl-tfstate-<ACCOUNT_ID>"
 key          = "env/prod/terraform.tfstate"
-region       = "eu-west-1"
+region       = "eu-west-3"
 use_lockfile = true
 encrypt      = true
