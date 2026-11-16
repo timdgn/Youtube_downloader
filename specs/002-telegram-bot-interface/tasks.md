@@ -232,7 +232,7 @@ check. Documentation is part of done (constitution W.3).
 - [X] T065 [P] Extend `app/tests/unit/test_no_secrets_in_logs.py` to the bot: a handled request logs `update_id`, the outcome and a duration, and never the chat id, the account id, the token, the webhook secret, the source URL with its query string or a signed link; a refusal logs the same fields; an error logs the exception class name only
 - [X] T066 [P] Write `app/tests/e2e/test_bot.py` marked `e2e`: POST a synthetic API Gateway event to the deployed `bot_webhook_url` from `infra/outputs.tf`, assert `403` for a wrong secret and `200` for `{"action":"health"}`; send no chat traffic unless `YTDL_E2E_SEND=1`, in which case send exactly one operator request and assert one acknowledgement, then stop. This is the only test that reaches the deployed stack and it never repeats a run (constitution V)
 - [X] T067 Run `make test`, `make lint` and `make tf-check` across `app/` and `infra/` and fix anything they report; confirm the suite in `app/tests/` is still offline (no AWS, no Telegram, no network) and that the previously passing 551 tests still pass
-- [ ] T068 Deploy `ENV=dev` once and execute `quickstart.md` steps 4 to 14 in order, one request per tier, one `/test`, then `make destroy` and the `getWebhookInfo` check that proves `url` is empty; record the observed results next to the steps. Stop at any step that would generate load to approach a cost ceiling
+- [X] T068 Deploy `ENV=dev` once and execute `quickstart.md` steps 4 to 14 in order, one request per tier, one `/test`, then `make destroy` and the `getWebhookInfo` check that proves `url` is empty; record the observed results next to the steps. Stop at any step that would generate load to approach a cost ceiling
 
 ---
 
