@@ -72,6 +72,9 @@ Budget context: the documented profile is 100 videos per month at 15 minutes eac
 7-day retention, expected at roughly $1.40 (research D-02). The $10 ceiling is deliberate
 headroom, not a restatement of the estimate.
 
+This ceiling is a guardrail, not a target. No drill or test generates load to approach
+it (constitution principle V, v1.1.0): read actual spend, never induce it.
+
 Observed at validation (2026-11-16, `eu-west-3`):
 
 - Worker duration: a 10.6-minute 1080p video (269 MB) completed in **14.9 s** of worker
@@ -212,3 +215,25 @@ with `-reconfigure` and apply it fresh.
 
 `make outputs ENV=<env>` prints an environment's outputs after re-initialising, so a stale
 backend pointer cannot silently answer for the wrong environment.
+
+---
+
+## 10. Monthly cost review
+
+Once a month, read the bill; never induce it.
+
+1. Read the month to date:
+   `aws ce get-cost-and-usage --region us-east-1 --time-period Start=<first>,End=<today> --granularity MONTHLY --metrics UnblendedCost`.
+2. Compare with the research D-02 table, which expects roughly $1.40 for the documented
+   profile (100 videos, 15 minutes each, 7-day retention).
+3. Above $5, check average `media_size_bytes` and retention overlap before anything else.
+   Above $10 the ceiling alarm fires: stop submissions until the cause is understood.
+4. Record the figure and the date at the bottom of this section.
+
+| Date | Spend | Note |
+|------|-------|------|
+| 2026-11-16 | $0.00 | validation day, partial day, Cost Explorer still settling |
+
+Do not generate load, extra submissions, or a synthetic month to "test" the ceiling.
+Constitution principle V (v1.1.0) makes the ceiling a guardrail, not a test target: it is
+justified by arithmetic and monitored from billing data.

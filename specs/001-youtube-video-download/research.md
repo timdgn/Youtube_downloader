@@ -97,6 +97,11 @@ actually move the bill are average output size (a 4 GB cap means a single job ca
 files with full retention overlap stays near $3, so $10 is a real ceiling, not a
 restatement of the estimate.
 
+The ceiling is never exercised. Constitution principle V (v1.1.0) forbids generating
+load to approach it, so the figure is justified by this table's arithmetic and by
+reading real spend, never by inducing the 100-video profile. A ceiling reached on
+purpose has already failed at the one job it had.
+
 **Alternatives considered**:
 - *$5 ceiling*: only 3.5 times the estimate; a single month of larger-than-average
   files or a few retried jobs would trip it and train the operator to ignore alarms.

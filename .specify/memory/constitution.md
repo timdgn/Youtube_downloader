@@ -1,23 +1,17 @@
 <!--
 Sync Impact Report
 ==================
-Version change: (unratified template) -> 1.0.0
-Rationale: initial ratification, first concrete constitution for this project.
+Version change: 1.0.0 -> 1.1.0
+Rationale: the first live validation treated the monthly cost ceiling as something
+to exercise. A ceiling reached in order to test it has already been breached, so
+principle V now states that ceilings are guardrails, never test targets.
 
-Modified principles: none (all five applied from the template scaffold)
-Added sections:
-  - Technical & Legal Constraints
-  - Development Workflow & Quality Gates
+Modified principles: V (one bullet added: ceilings are not test targets)
+Added sections: none
 Removed sections: none
-
 Deferred items: none
 
-Notes for review:
-  - RATIFICATION_DATE set to the first adoption date; correct it if the project
-    was formally adopted earlier.
-  - The Python 3.12 / container image / yt-dlp baseline in "Technical & Legal
-    Constraints" is a recommended default, not a user-confirmed decision.
-    Amend it before /speckit.plan if a different runtime is chosen.
+History: 1.0.0 was the initial ratification on 2026-11-15.
 -->
 
 # YouTube Download Service Constitution
@@ -114,6 +108,12 @@ are the only way to tell "our bug" from "upstream changed".
 - Cost ceilings are explicit: a maximum permitted video duration/resolution, an
   S3 lifecycle expiry, and a documented monthly budget. Exceeding them is a
   decision, never a surprise.
+- A cost ceiling is a guardrail, never a test target. Nothing in this project
+  generates load, synthetic usage, or sustained activity to approach, exercise,
+  or validate a ceiling. A ceiling is justified by a pricing model reviewed in
+  the plan, and real spend is read from billing data, never induced to prove it
+  works. A ceiling that has been reached on purpose has already failed at the
+  one job it had.
 - Failures are classified (invalid input, unsupported media, transient upstream,
   infrastructure) and surfaced to the caller as distinct, actionable errors.
 
@@ -188,4 +188,4 @@ principle or a stated requirement is removed rather than justified.
 present) must not contradict this document; conflicts are resolved in favour of
 this constitution.
 
-**Version**: 1.0.0 | **Ratified**: 2026-11-15 | **Last Amended**: 2026-11-15
+**Version**: 1.1.0 | **Ratified**: 2026-11-15 | **Last Amended**: 2026-11-16

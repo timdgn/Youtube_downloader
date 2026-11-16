@@ -113,6 +113,7 @@ bucket, 2 functions.
 | V.3 | Operations | rate limited and concurrency capped? | PASS | Hourly conditional counter plus worker reserved concurrency of 2; stage throttling as a backstop (D-10) |
 | V.4 | Operations | explicit cost ceilings: duration, resolution, lifecycle, documented monthly budget? | PASS | 60 min, 1080p, 4 GB, 7-day lifecycle, $10 ceiling with alarms at $5 and $10 (D-02) |
 | V.5 | Operations | failures classified and surfaced as distinct actionable errors? | PASS | Five fixed categories plus `retryable` (D-13, contracts/api.md) |
+| V.6 | Operations | treat cost ceilings as guardrails, never inducing spend to validate them? | PASS | No task, drill, or test generates load to approach the ceiling. T101 only reads billing data, and research D-02 justifies the figure with a pricing table. Constitution v1.1.0. |
 | C.1 | Constraints | container images because media tooling exceeds zip limits, Python 3.12 baseline kept? | PASS | No amendment needed; the constitution's recommended baseline is used as written |
 | C.2 | Constraints | acceptable-use constraint respected; no public ripping service; no DRM or paid-access bypass? | PASS | Token-gated single operator, no anonymous path, DRM and paid content rejected as `unsupported_media`, README states the constraint |
 | C.3 | Constraints | copyleft obligations of bundled tooling recorded? | PASS | `THIRD-PARTY-NOTICES.md` records yt-dlp (Unlicense), ffmpeg (GPL build, not redistributed), Deno (MIT), and the no-redistribution note |

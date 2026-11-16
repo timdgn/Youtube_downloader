@@ -200,6 +200,10 @@ alarms live in `us-east-1`, because the `AWS/Billing` metric is published only t
 They notify a second SNS topic, `ytdl-<env>-alarms-us-east-1`. Set `alarm_email` and
 confirm both subscription emails, or the alarms fire into a topic nobody reads.
 
+The ceiling is a guardrail, not a target: nothing in this project generates load to
+approach it. It is justified by a pricing model and monitored from billing data, never
+reached on purpose (constitution principle V).
+
 ## Known limitation
 
 YouTube scores datacenter IP ranges badly, and Lambda egress addresses are datacenter

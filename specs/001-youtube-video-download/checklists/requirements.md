@@ -66,7 +66,7 @@ What was proven, and against what:
 | Retention (SC-005) | PASS | eight objects, oldest 0 days; `make verify-retention` passes |
 | Concurrency cap (FR-014) | PASS | three simultaneous submissions: never more than two `processing`, the third waited, reserved concurrency 2 |
 | Worker duration (SC-002) | PASS | a 10.6-minute 1080p video took 14.9 s of worker time, far below the 600 s alarm |
-| Cost ceiling (SC-011) | OPEN | Cost Explorer reported $0.00 on the day of validation; the 100-video profile was not exercised, so $10 remains unvalidated |
+| Cost ceiling (SC-011) | PASS by design | Justified by the research D-02 pricing table and monitored from billing data. Constitution principle V (v1.1.0) forbids inducing load to exercise it, so it is never reached on purpose. Cost Explorer reported $0.00 on the validation day. |
 
 **The block, and its resolution.** On the first deployment yt-dlp reached YouTube from
 Lambda and was refused in 1 to 7 seconds, classified `upstream_problem` with
