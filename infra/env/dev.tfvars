@@ -18,6 +18,8 @@ worker_ephemeral_storage_mb = 10240
 
 alarm_email = ""
 
-ytdlp_cookies_s3_uri = ""
+# Presence of a cookies URI enables the hook: the worker reads
+# config/cookies.txt from this environment's own bucket. Never commit the file.
+ytdlp_cookies_s3_uri = "s3://ytdl-000000000000-dev-media/config/cookies.txt"
 ytdlp_proxy_param    = ""
 ytdlp_player_client  = ""

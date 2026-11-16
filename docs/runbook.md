@@ -153,6 +153,14 @@ Remedies, in order of effort:
 All three are empty by default and add no flags when unset. Treat the cookies file as a
 credential: it is never logged, and it lives under a prefix only the worker role can read.
 
+**Cookies must be fresh.** An export whose session cookies have expired looks present but
+authenticates nothing, and the hard block remains. Check the file date before blaming the
+network: in the first full deployment (2026-11-16) an export with 136 of 160 cookies past
+their expiry still produced a non-retryable block, and forcing the `mweb` or `ios` player
+client did not change it. Re-export from a signed-in browser session, upload over
+`config/cookies.txt`, then submit again. The worker reads the file at cold start, so a new
+job always picks up the new copy.
+
 ---
 
 ## 7. Retention and expiry
@@ -174,3 +182,28 @@ credential: it is never logged, and it lives under a prefix only the worker role
 Recorded so nobody rediscovers it as a bug: no deduplication (two submissions are two
 jobs), no audio-only or subtitle variants, no playlists or live streams, no re-encoding, no
 web UI, no multi-tenant identity, no PO token provider service. See research D-19.
+
+---
+
+## 9. Switching between dev and prod
+
+The root module uses one working directory and two backends. `terraform init` remembers the
+last backend it saw, so **every** manual Terraform command must be preceded by an init for
+the environment you mean:
+
+```bash
+terraform -chdir=infra init -reconfigure -backend-config=backend/dev.backend \
+  -backend-config=bucket=ytdl-tfstate-<account-id>
+```
+
+`make deploy` and `make destroy` do this for you and refuse to run without `ENV`.
+
+This is not a formality. An apply with the wrong backend does not fail: it destroys the
+other environment's resources and adopts the new names into the wrong state file. That
+happened once during the first bring-up on 2026-11-16, before `-reconfigure` was made
+unconditional, and it destroyed the dev stack. If it happens again, the recovery is to
+destroy the resources now recorded in the wrong state, then re-initialise each environment
+with `-reconfigure` and apply it fresh.
+
+`make outputs ENV=<env>` prints an environment's outputs after re-initialising, so a stale
+backend pointer cannot silently answer for the wrong environment.

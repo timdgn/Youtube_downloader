@@ -442,6 +442,17 @@ configuration (cookies or proxy), not code. No PO token provider service is bund
 v1: it cannot run as a sidecar in Lambda, and it does not solve the dominant failure
 mode.
 
+**Confirmed in the first deployment (2026-11-16)**: the risk is not theoretical. From
+`eu-west-3`, yt-dlp against a public 19-second video returned a hard block in 1 to 7
+seconds, classified `upstream_problem` with `retryable = false`, with no media byte
+transferred. A cookies file supplied by the operator loaded correctly (no hook warning,
+160 cookies) but 136 of them were past their expiry, and the block persisted. Forcing the
+`mweb` and `ios` player clients did not change the result either. The pipeline, the
+classification, the rate limit, and the logging all behaved as designed; only the upstream
+refused. The remaining remedy is a fresh export from a signed-in browser session, or a
+residential proxy. This is recorded because "it failed in production" and "the design was
+wrong" are different findings, and only the first is true here.
+
 **Alternatives considered**:
 - *Bundle the bgutil PO token provider and its Node runtime*: roughly +150 MB of image,
   a second runtime to pin, and no documented benefit on flagged IPs.

@@ -23,7 +23,7 @@ export AWS_REGION
 
 .PHONY: help install image image-api image-worker test test-unit test-contract \
         test-e2e lint fmt verify-image tf-check bootstrap deploy destroy \
-        verify-destroy verify-retention verify-idempotency token
+        verify-destroy verify-retention verify-idempotency token outputs
 
 help:
 	@echo "install              create app/.venv and install pinned dependencies"
@@ -38,6 +38,7 @@ help:
 	@echo "destroy ENV=dev      remove every resource that environment created"
 	@echo "verify-destroy ENV=  prove nothing chargeable survives"
 	@echo "token ENV=dev        print the API bearer token"
+	@echo "outputs ENV=dev      re-init that backend and print its outputs"
 
 install:
 	$(PY) -m venv $(VENV)
@@ -112,7 +113,7 @@ deploy:
 	@test -f infra/backend/$(ENV).backend || { echo "missing infra/backend/$(ENV).backend"; exit 1; }
 	@ACCOUNT=$$(aws sts get-caller-identity --query Account --output text 2>/dev/null); \
 	test -n "$$ACCOUNT" || { echo "no AWS credentials in this shell"; exit 1; }; \
-	terraform -chdir=infra init -input=false \
+	terraform -chdir=infra init -input=false -reconfigure \
 		-backend-config=backend/$(ENV).backend \
 		-backend-config=bucket=$(STATE_BUCKET_PREFIX)-$$ACCOUNT; \
 	terraform -chdir=infra apply -input=false -auto-approve \
@@ -136,14 +137,24 @@ destroy:
 	@test -f infra/backend/$(ENV).backend || { echo "missing infra/backend/$(ENV).backend"; exit 1; }
 	@ACCOUNT=$$(aws sts get-caller-identity --query Account --output text 2>/dev/null); \
 	test -n "$$ACCOUNT" || { echo "no AWS credentials in this shell"; exit 1; }; \
-	terraform -chdir=infra init -input=false \
+	terraform -chdir=infra init -input=false -reconfigure \
 		-backend-config=backend/$(ENV).backend \
 		-backend-config=bucket=$(STATE_BUCKET_PREFIX)-$$ACCOUNT; \
 	terraform -chdir=infra destroy -input=false -auto-approve \
 		-var-file=env/$(ENV).tfvars -var image_tag=$(IMAGE_TAG)
 
+outputs:
+	@test -n "$(ENV)" || { echo "usage: make outputs ENV=dev"; exit 1; }
+	@ACCOUNT=$$(aws sts get-caller-identity --query Account --output text 2>/dev/null); \
+	test -n "$$ACCOUNT" || { echo "no AWS credentials in this shell"; exit 1; }; \
+	terraform -chdir=infra init -input=false -reconfigure \
+		-backend-config=backend/$(ENV).backend \
+		-backend-config=bucket=$(STATE_BUCKET_PREFIX)-$$ACCOUNT >/dev/null; \
+	terraform -chdir=infra output
+
 token:
 	@test -n "$(ENV)" || { echo "usage: make token ENV=dev"; exit 1; }
+	@$(MAKE) -s outputs ENV=$(ENV) >/dev/null
 	@aws ssm get-parameter \
 		--name "$$(terraform -chdir=infra output -raw token_parameter_name)" \
 		--with-decryption --query Parameter.Value --output text
@@ -157,7 +168,7 @@ verify-destroy:
 	report() { echo "SURVIVOR: $$1"; survivors=1; }; \
 	for b in $$(aws s3 ls | awk '{print $$3}' | grep '^ytdl-' | grep -v '^$(STATE_BUCKET_PREFIX)-'); do report "s3://$$b"; done; \
 	for t in $$(aws dynamodb list-tables --query 'TableNames[]' --output text | tr '\t' '\n' | grep '^ytdl-'); do report "dynamodb $$t"; done; \
-	for q in $$(aws sqs list-queues --queue-name-prefix ytdl- --query 'QueueUrls[]' --output text | tr '\t' '\n'); do report "sqs $$q"; done; \
+	for q in $$(aws sqs list-queues --queue-name-prefix ytdl- --query 'QueueUrls[]' --output text | tr '\t' '\n' | grep -vx 'None'); do report "sqs $$q"; done; \
 	for f in $$(aws lambda list-functions --query 'Functions[].FunctionName' --output text | tr '\t' '\n' | grep '^ytdl-'); do report "lambda $$f"; done; \
 	for r in $$(aws ecr describe-repositories --query 'repositories[].repositoryName' --output text | tr '\t' '\n' | grep '^ytdl-'); do report "ecr $$r"; done; \
 	for a in $$(aws apigatewayv2 get-apis --query 'Items[].Name' --output text | tr '\t' '\n' | grep '^ytdl-'); do report "apigateway $$a"; done; \

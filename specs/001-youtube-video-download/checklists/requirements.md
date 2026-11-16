@@ -39,20 +39,47 @@
 
 ## Implementation Verification (2026-11-16)
 
-What was proven offline, and what still needs a deployed account:
+What was proven, and against what:
 
 | Item | Status | Evidence |
 |------|--------|----------|
-| Unit and contract suites | PASS | 546 tests: 414 unit, 132 contract, all offline |
+| Unit and contract suites | PASS | 550 tests: 418 unit, 132 contract, all offline |
 | Lint and formatting | PASS | `ruff check` and `ruff format --check` clean over `app/` |
-| Terraform validity | PASS | `validate` clean in `infra/` and `infra/bootstrap/`; both lock files committed |
-| Container packaging | PASS | both images built for arm64; `ytdl.api.handler.handler` and `ytdl.worker.handler.handler` import inside the images |
+| Terraform validity | PASS | `validate` clean in both roots; both lock files committed |
+| Container packaging | PASS | both images built for arm64; handler modules import inside the images |
 | Media toolchain with pinned versions | PASS | yt-dlp 2026.10.26, EJS 0.8.0, ffmpeg N-128946, Deno 2.9.8; SHA-256 verified at build |
-| Real extraction end to end (no AWS) | PASS | the worker image ran `process_job` against a real video: probe, select, download, `-c copy` remux, ffprobe, completion record with `h264`/`aac`, `240p`, 635,506 bytes |
-| Deploy, destroy, alarms, e2e, drills | BLOCKED | no AWS credentials in the implementation session; T056-T059, T072-T073, T082-T083, T088-T091, T094, T097-T104 remain open |
+| Real extraction, no AWS | PASS | the worker image ran `process_job` end to end: probe, select, download, `-c copy` remux, ffprobe, completion record with `h264`/`aac` |
+| Provision in `eu-west-3` | PASS | `make bootstrap` then `make deploy ENV=dev`: 38 resources, API answered in 71 to 1753 ms |
+| Rejection and auth | PASS | `401` without a token, `400 invalid_input` for a foreign host and a playlist |
+| Rate limit | PASS | 10 accepted, 11th `429` in 65 ms with `Retry-After` |
+| Failure classification | PASS | a real YouTube refusal surfaced as `upstream_problem`, `retryable: false`, with a complete audit log line |
+| Alarms | PASS | five operational alarms in Paris, two budget alarms in `us-east-1`, each pointing at a topic in its own region |
+| No drift | PASS | `terraform plan` reports no changes after apply |
+| Two environments | PASS | dev and prod ran side by side with separate state keys and distinct API ids |
+| Destroy dev, prod survives | PASS | dev API unreachable, dev bucket and cookies gone, prod still answered `401` |
+| Destroy prod | PASS | `verify-destroy` reports no surviving resource; only the state bucket remains |
+| Successful download (FR-005, SC-002, SC-004) | BLOCKED | YouTube hard-blocks the Lambda egress address; see below |
+| Retention, idempotency, cost drills | BLOCKED | each needs one stored file, and no file could be produced |
 
-Two corrections made during implementation, recorded rather than hidden:
+**The block, precisely.** yt-dlp reached YouTube from Lambda and was refused in 1 to 7
+seconds with no media transferred. The service classified it `upstream_problem` with
+`retryable = false`, which is exactly research D-14's hard block, so the behaviour is
+correct and the upstream is the obstacle. An operator-supplied cookies file loaded
+successfully, but 136 of its 160 cookies were past their expiry; forcing the `mweb` and
+`ios` player clients changed nothing. The remedy is a fresh export from a signed-in
+browser session, or a residential proxy.
 
-- `yt-dlp` needs the EJS solver distribution, not only the Deno runtime. The image installs `yt-dlp[default]`, which pins `yt-dlp-ejs==0.8.0`; without it the `n` challenge fails and formats are missing (research D-04).
-- `1440p` and `2160p` are now accepted quality labels that cap to the ceiling, because FR-011 and US3 acceptance scenario 4 require an above-ceiling request to be capped rather than rejected. `contracts/api.md` was corrected to list them.
+**Defects found only by deploying, all fixed and covered by tests:**
+
+- the DynamoDB adapter passed plain Python values to the low-level client, which requires
+  AttributeValue maps, so every submission returned 500 while mocked tests stayed green;
+- the retry branch used `if_not_exists` inside a `ConditionExpression`, which DynamoDB
+  rejects;
+- switching `ENV` reused the previous backend, so the prod apply destroyed the dev stack
+  and adopted the prod names into dev's state file; `-reconfigure` is now unconditional;
+- the budget alarms pointed at a Paris SNS topic, but a CloudWatch alarm can only act on a
+  topic in its own region, so they now have a `us-east-1` topic;
+- buildx pushed an image index with attestations, which Lambda rejects as an unsupported
+  manifest; provenance and SBOM are now disabled for the Lambda images.
+
 
