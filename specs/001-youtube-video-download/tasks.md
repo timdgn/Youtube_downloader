@@ -136,7 +136,7 @@ endpoint rather than in a later phase.
 - [X] T054 [US1] Implement `app/src/ytdl/worker/handler.py`: SQS batch of 1, re-read the job from DynamoDB by `job_id` rather than trusting the message body, call the pipeline, and return `batchItemFailures` only for a retryable failure
 - [X] T055 [US1] Wire delivery in `app/src/ytdl/api/routes.py` and `app/src/ytdl/api/handler.py`: on `completed`, `head_object` the media key, and only then presign with `ExpiresIn = 3600`; return `result.status: available` with `download_url`, `expires_at`, `size_bytes`, and `content_type`; re-issue uses the same signing path
 - [X] T056 [US1] Run `make deploy ENV=dev`, confirm `terraform output api_base_url` and `media_bucket`, then run `terraform plan` again with the same `-var image_tag` and confirm it reports no changes (constitution principle I)
-- [ ] T057 [US1] Run the deployed path by hand per `quickstart.md` steps 3 to 6: submit a short public video, poll, download, and confirm the file plays, is `video/mp4`, and its size equals `result.size_bytes`
+- [X] T057 [US1] Run the deployed path by hand per `quickstart.md` steps 3 to 6: submit a short public video, poll, download, and confirm the file plays, is `video/mp4`, and its size equals `result.size_bytes`
 - [X] T058 [US1] Run the rejection drill from `quickstart.md` step 8 (foreign host, playlist, missing token) and confirm no job item was created and the worker logged no invocation for those attempts
 - [X] T059 [US1] Measure acceptance latency with `curl -w '%{time_total}'` over 10 submissions and confirm every sample is under 3 seconds (FR-003, SC-001); record the samples in the phase notes
 
@@ -170,7 +170,7 @@ the job reports `expired` and the re-issue route answers `410`.
 - [X] T070 [US2] Extend `app/src/ytdl/adapters/extractor.py` to pass the three optional D-14 hooks: the cookies file fetched from `config/cookies.txt` when `ytdlp_cookies_s3_uri` is set, the proxy from SSM when `ytdlp_proxy_param` is set, and a `--extractor-args youtube:player_client=<value>` override when configured; all three default to empty and add no flags
 - [X] T071 [US2] Emit the audit entry required by FR-015 from `app/src/ytdl/worker/pipeline.py` on both outcomes: `job_id`, `source_host`, `video_id`, `requested_quality`, `produced_quality`, `outcome`, `processing_ms`, `media_size_bytes` on success, `attempt`, and no token, cookie, header, or URL with a query string
 - [X] T072 [US2] Run the failure drill from `quickstart.md` step 9 against dev with a private or deleted video, confirm `state: failed`, the correct category and retryable flag, and no `download_url`; then run the 11-submission rate drill and confirm the 11th answers `429` in under a second with no job created
-- [ ] T073 [US2] Run the expiry drill from `quickstart.md` step 10 (delete `output/<job_id>/` with `aws s3 rm`), confirm `result.status: expired` and `410 result_expired` from the re-issue route, then confirm a poison message reaches the DLQ and raises the DLQ alarm by inspecting the dead-letter queue
+- [X] T073 [US2] Run the expiry drill from `quickstart.md` step 10 (delete `output/<job_id>/` with `aws s3 rm`), confirm `result.status: expired` and `410 result_expired` from the re-issue route, then confirm a poison message reaches the DLQ and raises the DLQ alarm by inspecting the dead-letter queue
 
 **Checkpoint**: User Stories 1 and 2 both work independently; every failure mode is classified and observable.
 
@@ -197,8 +197,8 @@ confirm a cap to 1080 rather than a rejection.
 - [X] T079 [US3] Implement `app/src/ytdl/formats.py` selecting `(format_selector, expected_height)` from the metadata fixtures, in the order: exact height with `avc1`+`mp4a`, next lower with `avc1`+`mp4a`, best available at or below the cap, recording the actual codecs
 - [X] T080 [US3] Add `quality` parsing and capping to `app/src/ytdl/api/routes.py` and `app/src/ytdl/api/handler.py`, persisting `requested_quality` and the capped `requested_height` onto the job item
 - [X] T081 [US3] Use `requested_height` and `formats.py` in `app/src/ytdl/worker/pipeline.py`, and persist `produced_height`, `produced_quality`, `produced_vcodec`, and `produced_acodec` on completion so `GET` reports the produced value
-- [ ] T082 [US3] Run the quality drill from `quickstart.md`: submit one video at `360p` and at `1080p`, confirm each file's `ffprobe` height matches the reported `produced_quality`, then submit `2160p` and confirm the cap is reported without a failure
-- [ ] T083 [US3] Submit a preference the source does not offer (for example `1080p` against the 720p fixture equivalent), confirm the job completes with the closest lower quality, and confirm the fallback is visible in `produced_quality` and the structured log line
+- [X] T082 [US3] Run the quality drill from `quickstart.md`: submit one video at `360p` and at `1080p`, confirm each file's `ffprobe` height matches the reported `produced_quality`, then submit `2160p` and confirm the cap is reported without a failure
+- [X] T083 [US3] Submit a preference the source does not offer (for example `1080p` against the 720p fixture equivalent), confirm the job completes with the closest lower quality, and confirm the fallback is visible in `produced_quality` and the structured log line
 
 **Checkpoint**: All four stories except provisioning are independently functional.
 
@@ -228,7 +228,7 @@ teardown guarantee, and the documentation that FR-016, FR-017, FR-018, and FR-01
 - [X] T091 [US4] Run `terraform plan` twice in a row with the same `-var-file` and `-var image_tag` and confirm the second run reports no changes (US4 scenario 4, constitution principle I)
 - [X] T092 [P] [US4] Write `README.md` with what the service does, the acceptable-use constraint, prerequisites, the four operator commands (submit, poll, fetch, re-issue), provisioning, second environment, teardown, and the location of the failure catalogue
 - [X] T093 [P] [US4] Write `docs/runbook.md` with the failure catalogue (five categories, cause, and the operator's next action), the credential rotation procedure, the alarm response table from `quickstart.md` step 14, and how to read a structured log line
-- [ ] T094 [US4] Time a first-time operator walkthrough from an empty account to a downloaded file using only `README.md` and `docs/runbook.md`, and confirm it finishes under 30 minutes with zero console actions (SC-006); record the elapsed time in the phase notes
+- [X] T094 [US4] Time a first-time operator walkthrough from an empty account to a downloaded file using only `README.md` and `docs/runbook.md`, and confirm it finishes under 30 minutes with zero console actions (SC-006); record the elapsed time in the phase notes
 
 **Checkpoint**: The service is provisionable, reproducible, and fully removable.
 
@@ -240,10 +240,10 @@ teardown guarantee, and the documentation that FR-016, FR-017, FR-018, and FR-01
 
 - [X] T095 [P] Write `app/tests/unit/test_no_secrets_in_logs.py` that runs the captured log lines from the contract fixtures through a scanner asserting no token value, no `Authorization` header, and no URL containing a query string longer than a video id (FR-015, SC-009)
 - [X] T096 Add `lint` and complete `tf-check` in `Makefile`: `ruff check app/` and `ruff format --check app/`, `terraform fmt -check -recursive infra/`, and `terraform validate` in `infra/` and `infra/bootstrap/`; wire both into `make test`'s documented pre-step so they cannot be skipped silently
-- [ ] T097 Add a `verify-idempotency` target to `Makefile` that re-processes one completed job 100 times through the worker path and asserts exactly one object exists under `output/<job_id>/` and that `media_size_bytes` never changes (SC-008, FR-013)
-- [ ] T098 Run the rate and concurrency drills: 11 submissions in one hour and 3 simultaneous jobs against a reserved concurrency of 2; confirm the throttled response arrives within one second and that the third job waits rather than failing (FR-014, SC-010), then record the observed latencies in `docs/runbook.md` under the worker throttles alarm
-- [ ] T099 Add a `verify-retention` target to `Makefile` that lists `output/` with `aws s3api list-objects-v2` and fails if any object is older than 8 days, then run it and record the oldest observed age (SC-005, research D-12)
-- [ ] T100 Measure worker duration for a 30-minute video at default quality, confirm the p95 stays under 600 s and the job is downloadable within 10 minutes of submission, and record the numbers in `docs/runbook.md` under the worker duration alarm (SC-002)
+- [X] T097 Add a `verify-idempotency` target to `Makefile` that re-processes one completed job 100 times through the worker path and asserts exactly one object exists under `output/<job_id>/` and that `media_size_bytes` never changes (SC-008, FR-013)
+- [X] T098 Run the rate and concurrency drills: 11 submissions in one hour and 3 simultaneous jobs against a reserved concurrency of 2; confirm the throttled response arrives within one second and that the third job waits rather than failing (FR-014, SC-010), then record the observed latencies in `docs/runbook.md` under the worker throttles alarm
+- [X] T099 Add a `verify-retention` target to `Makefile` that lists `output/` with `aws s3api list-objects-v2` and fails if any object is older than 8 days, then run it and record the oldest observed age (SC-005, research D-12)
+- [X] T100 Measure worker duration for a 30-minute video at default quality, confirm the p95 stays under 600 s and the job is downloadable within 10 minutes of submission, and record the numbers in `docs/runbook.md` under the worker duration alarm (SC-002)
 - [ ] T101 Review actual cost for the documented 100-video profile against the $10 ceiling, compare with the research D-02 table, and record the observed figures and any deviation in `docs/runbook.md` (SC-011)
 - [X] T102 Confirm the SNS subscription is confirmed, publish one test notification, and verify both budget alarms exist in `us-east-1` and read `AWS/Billing EstimatedCharges` in USD; record the check in `docs/runbook.md`
 - [X] T103 Run `make test` (unit plus contract, offline), `make lint`, and `make tf-check`, confirm all green, then update `specs/001-youtube-video-download/checklists/requirements.md` with the verification status of the settled values and the final task state

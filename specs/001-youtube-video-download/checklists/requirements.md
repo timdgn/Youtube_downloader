@@ -58,16 +58,23 @@ What was proven, and against what:
 | Two environments | PASS | dev and prod ran side by side with separate state keys and distinct API ids |
 | Destroy dev, prod survives | PASS | dev API unreachable, dev bucket and cookies gone, prod still answered `401` |
 | Destroy prod | PASS | `verify-destroy` reports no surviving resource; only the state bucket remains |
-| Successful download (FR-005, SC-002, SC-004) | BLOCKED | YouTube hard-blocks the Lambda egress address; see below |
-| Retention, idempotency, cost drills | BLOCKED | each needs one stored file, and no file could be produced |
+| Successful download (FR-005, SC-004) | PASS | a 19-second video completed in about 30 s; the downloaded file is 635,474 bytes of `h264`+`aac`, 19.06 s, with no credential beyond the URL |
+| Quality selection and capping | PASS | one 10.6-minute source at 360p, 720p and a 2160p request: produced 360p (29.0 MB), 720p (161.4 MB), and 1080p (268.5 MB) after the cap; the downloaded 720p file is genuinely 1280x720 |
+| Quality fallback | PASS | a 720p request against a 240p-max source completed as 240p, with the produced quality reported |
+| Expiry reporting | PASS | deleting one object turned its job into `expired` with no URL, the re-issue route answered `410`, and another job stayed `available` |
+| Idempotency (SC-008) | PASS | 100 replays of a completed job left exactly one object and an unchanged size |
+| Retention (SC-005) | PASS | eight objects, oldest 0 days; `make verify-retention` passes |
+| Concurrency cap (FR-014) | PASS | three simultaneous submissions: never more than two `processing`, the third waited, reserved concurrency 2 |
+| Worker duration (SC-002) | PASS | a 10.6-minute 1080p video took 14.9 s of worker time, far below the 600 s alarm |
+| Cost ceiling (SC-011) | OPEN | Cost Explorer reported $0.00 on the day of validation; the 100-video profile was not exercised, so $10 remains unvalidated |
 
-**The block, precisely.** yt-dlp reached YouTube from Lambda and was refused in 1 to 7
-seconds with no media transferred. The service classified it `upstream_problem` with
-`retryable = false`, which is exactly research D-14's hard block, so the behaviour is
-correct and the upstream is the obstacle. An operator-supplied cookies file loaded
-successfully, but 136 of its 160 cookies were past their expiry; forcing the `mweb` and
-`ios` player clients changed nothing. The remedy is a fresh export from a signed-in
-browser session, or a residential proxy.
+**The block, and its resolution.** On the first deployment yt-dlp reached YouTube from
+Lambda and was refused in 1 to 7 seconds, classified `upstream_problem` with
+`retryable = false`: exactly research D-14's hard block. The first cookies file loaded but
+136 of its 160 entries had expired, and `mweb` or `ios` changed nothing. With a fresh
+export (23 cookies, none expired), the same job completed on the first attempt. The
+remedy is configuration, not code; a stale export is indistinguishable from no export
+until you count its expired entries.
 
 **Defects found only by deploying, all fixed and covered by tests:**
 
@@ -80,6 +87,9 @@ browser session, or a residential proxy.
 - the budget alarms pointed at a Paris SNS topic, but a CloudWatch alarm can only act on a
   topic in its own region, so they now have a `us-east-1` topic;
 - buildx pushed an image index with attestations, which Lambda rejects as an unsupported
-  manifest; provenance and SBOM are now disabled for the Lambda images.
+  manifest; provenance and SBOM are now disabled for the Lambda images;
+- the S3 client signed presigned URLs for the region but emitted the global
+  `s3.amazonaws.com` host, so S3 rejected every download with
+  `AuthorizationQueryParametersError`; both builders now pin the regional endpoint.
 
 

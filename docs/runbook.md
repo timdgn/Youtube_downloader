@@ -72,11 +72,16 @@ Budget context: the documented profile is 100 videos per month at 15 minutes eac
 7-day retention, expected at roughly $1.40 (research D-02). The $10 ceiling is deliberate
 headroom, not a restatement of the estimate.
 
-Observed at validation: not yet recorded. The three figures in this paragraph (worker
-p95 duration, actual monthly cost, and a delivered test alarm) require a deployed stack
-with AWS credentials, and were not captured in the session that built this service. Run
-`make test-e2e`, then read the CloudWatch metrics for the `worker` function and the
-Billing console, and record the numbers here before relying on the alarms.
+Observed at validation (2026-11-16, `eu-west-3`):
+
+- Worker duration: a 10.6-minute 1080p video (269 MB) completed in **14.9 s** of worker
+  time; a 19-second 240p video took **6.2 s** warm and **27.7 s** cold. The 600 s alarm
+  has a very large margin because processing is a stream copy, not a re-encode.
+- Cost: Cost Explorer reported **$0.00** for the day of validation, which is expected for
+  a few minutes of use and a lagging daily metric. The $10 ceiling has not been exercised.
+- Alarm delivery: the two topics have **no email subscriber** while `alarm_email` is empty,
+  so delivery was not tested. Set the address and confirm the subscription email before
+  relying on the alarms.
 
 Two prerequisites for these signals:
 
