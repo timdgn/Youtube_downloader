@@ -9,8 +9,11 @@ entitled to download, and nothing produced by it is redistributed.
 | yt-dlp | 2026.10.26 | Unlicense | Invoked as a subprocess in the worker image to extract media |
 | FFmpeg (yt-dlp/FFmpeg-Builds, GPL build) | autobuild-2026-11-15-21-54, `ffmpeg-N-128946-g33a5956d8b-linuxarm64-gpl` | GPL v3 (build configuration) | Invoked as a subprocess to remux with stream copy; installed at image build time, not redistributed |
 | Deno | v2.9.8 | MIT | JavaScript runtime required by yt-dlp for YouTube challenge solving |
-| boto3 / botocore | 1.44.3 | Apache-2.0 | AWS SDK used by both Lambda functions |
+| boto3 / botocore | 1.44.3 | Apache-2.0 | AWS SDK used by all three Lambda functions |
 | pytest, pytest-cov, ruff | 9.2.0, 7.1.0, 0.17.5 | MIT | Development and test tooling only, never in a deployed image |
+
+MP3 output is produced by the LGPL `libmp3lame` encoder already compiled into that pinned
+FFmpeg build, so the audio tier bundles no new component and adds no licence obligation.
 
 ## Redistribution
 

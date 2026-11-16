@@ -1,8 +1,8 @@
 # YouTube Download Service
 
-A personal, single-operator service that takes a YouTube URL from your terminal, downloads
-the video in the background on AWS Lambda, stores one finished file privately for seven
-days, and returns a download link valid for 60 minutes.
+A personal, single-operator service that takes a YouTube URL from your terminal or a
+Telegram chat, downloads the video in the background on AWS Lambda, stores one finished
+file privately for seven days, and returns a download link valid for 60 minutes.
 
 Provisioning and removal are both Terraform. There is no console step, no server to
 patch, and no bucket to empty by hand.
@@ -80,6 +80,61 @@ limit.
 
 ```bash
 curl -sS -X POST "$API/v1/jobs/JOB_ID/link" -H "Authorization: Bearer $TOKEN" | jq .
+```
+
+---
+
+## The chat front door
+
+The bot answers in Telegram and calls the same submission path, worker and presigner as
+the terminal, so both entry points produce the same job records and the same files.
+
+**Create the bot.** In Telegram, open `@BotFather`, send `/newbot`, choose a display name
+and a username ending in `bot`, then copy the token it returns. This is the one human step
+in the whole deployment: Telegram has no API that creates a bot account, just as AWS has
+no Terraform resource for an AWS account.
+
+```bash
+export TF_VAR_telegram_bot_token='123456789:AA...'
+export TF_VAR_telegram_approved_user_ids='["<your numeric account id>"]'
+```
+
+The token is a Terraform variable because the apply writes it to an SSM `SecureString`.
+It is never written to a file in this repo, never an environment variable on a function,
+and never a log line.
+
+**Approve the accounts.** An account id is a number, not a username; `@userinfobot`
+reports yours, and the bot cannot tell you because it refuses unapproved accounts without
+revealing anything. The list lives in SSM and is read on every message in a single
+parameter call, so a change governs the next message: edit the variable and apply, which
+rewrites one parameter, rebuilds no image and redeploys no code. An empty list approves
+nobody, which is the safe default.
+
+**Ask for a file.** One message: a YouTube link, optionally followed by one resolution
+word. A word is a ceiling, not an exact quality, and the reply names the quality actually
+produced.
+
+| Word | Ceiling |
+|------|---------|
+| `low` | 240p |
+| `medium` | 480p |
+| `high` | 720p |
+| `veryhigh` | 1080p |
+| `mp3` | audio only, no ceiling |
+
+A link with no word uses the configured default, `high` (720p), and the acknowledgement
+says which tier was used.
+
+**Follow the link before it expires.** A download link lives 60 minutes; the file lives
+`RETENTION_DAYS`, 7 by default. When a link has expired, do not keep it: send the same
+request again, and while the file is still stored the bot answers with a fresh link in
+seconds and downloads nothing a second time. `/help` in the chat lists every command.
+
+Two read-only checks, neither of which sends chat traffic:
+
+```bash
+make bot-health ENV=dev   # the registration as Telegram reports it
+make bot-token ENV=dev    # the token value held in SSM
 ```
 
 ---

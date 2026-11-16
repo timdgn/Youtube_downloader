@@ -150,7 +150,7 @@ The operator, starting from an empty cloud account, provisions a complete workin
 - **"Here" means the operator's terminal**: the primary interaction is a documented command that takes a URL, prints a job identifier, and a second command that prints the result link.
 - **One supported source in v1**: YouTube only. Any other host is rejected, including hosts that are otherwise technically extractable.
 - **Single videos only in v1**: playlists, channels, live broadcasts, premieres, members-only, age-restricted, region-locked, and DRM-protected content are out of scope and produce a defined rejection.
-- **Video with audio only in v1**: audio-only extraction, subtitles, thumbnails, and metadata sidecars are out of scope.
+- **Video with audio only in v1**: audio-only extraction, subtitles, thumbnails, and metadata sidecars are out of scope for the terminal interface described here. The Telegram front door specified in `specs/002-telegram-bot-interface/spec.md` does deliver MP3 for its `mp3` tier, so the assumption is amended here rather than contradicted silently.
 - **Default output**: best available video up to 1080p, with audio combined into a single playable file. The container/codec combination is chosen at planning time and documented.
 - **Default limits**: maximum 60 minutes duration, maximum 1080p, maximum 4 GB output; these are configuration values, changeable per environment without code changes.
 - **Default access control**: every request must present a shared access credential; the service is not open to anonymous callers. Credential rotation is a documented operator task.

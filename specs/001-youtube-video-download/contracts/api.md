@@ -45,7 +45,7 @@ request is open.
 | Field | Type | Required | Rules |
 |-------|------|----------|-------|
 | `url` | string | yes | 8 to 2048 characters. Must resolve to a single YouTube video. Share links, `shorts`, `embed`, and links with extra parameters are normalised. Playlist, channel, and live URLs are rejected. |
-| `quality` | string or null | no | One of `360p`, `480p`, `720p`, `1080p`, `1440p`, `2160p`. Absent or null means the configured ceiling. Values above the ceiling are capped, not rejected. Any other value is `400 invalid_input`. |
+| `quality` | string or null | no | One of `240p`, `360p`, `480p`, `720p`, `1080p`, `1440p`, `2160p`. Absent or null means the configured ceiling. Values above the ceiling are capped, not rejected. Any other value is `400 invalid_input`. |
 
 **Response 202 Accepted**
 
@@ -72,6 +72,9 @@ Guarantees:
   SC-001). The work is queued, never performed inline.
 - A `400`, `401`, or `429` creates no job and consumes no rate capacity.
 - Two identical submissions produce two distinct jobs (no deduplication).
+- A ceiling the source cannot meet is not a rejection. When nothing exists at or below it,
+  the lowest rendition at or below `MAX_HEIGHT` is delivered, and `produced_quality`
+  reports what was produced (FR-010).
 
 ---
 

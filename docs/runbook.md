@@ -19,8 +19,8 @@ over the duration or size cap, downloads with a pinned yt-dlp, remuxes to MP4 wi
 copy (no re-encoding), uploads to private S3, and marks the job complete. The download
 link is a presigned S3 URL valid for 60 minutes. Media expires after 7 days.
 
-All resources live in **eu-west-3 (Paris)**: the bucket, the table, the queues, both
-functions, the HTTP API and the ECR repository. The only exception is the two budget
+All resources live in **eu-west-3 (Paris)**: the bucket, the table, the queues, all three
+functions, both HTTP APIs and the ECR repository. The only exception is the two budget
 alarms, which read `AWS/Billing` in `us-east-1` because that metric is published nowhere
 else. `AWS_REGION` defaults to `eu-west-3` in the `Makefile` so every CLI check targets
 the same region as the stack.
@@ -51,7 +51,7 @@ Two rules that follow from this table:
 
 ## 3. Alarm response
 
-Five operational alarms publish to `ytdl-<env>-alarms` in Paris. The two budget alarms
+Seven operational alarms publish to `ytdl-<env>-alarms` in Paris. The two budget alarms
 publish to `ytdl-<env>-alarms-us-east-1`, because a CloudWatch alarm can only notify a
 topic in its own region and `AWS/Billing` exists only in `us-east-1`. Both topics need a
 confirmed email subscription; the same address is used for each when `alarm_email` is set.
@@ -65,6 +65,8 @@ Each row names the first action, not the whole investigation.
 | Worker throttles above zero | Reserved concurrency of 2 is saturated | Expected during bursts. Investigate only if it persists when no jobs are queued. |
 | Worker p95 duration above 600 s | Approaching the 900 s Lambda ceiling | Check average `media_size_bytes` and download rate. Raising memory is a last resort; the deadline guard aborts at 780 s. |
 | DLQ depth above zero | A message was received twice and abandoned | Read the message, take its `job_id`, read that job's `failure_category`. Any dead letter is a defect. |
+| Bot errors above zero | A bot invocation raised | Read `/aws/lambda/ytdl-<env>-bot` and group by `event` and `outcome`. Section 11 has the named responses. |
+| Bot webhook health below 1 | The webhook is gone or the token was revoked | `make bot-health ENV=<env>`, then re-register, then rotate the token if Telegram answers 401. Section 11. |
 | Estimated charges above $5 | Half the monthly ceiling | Check average output size and retention overlap. Storage is the dominant driver, not requests. |
 | Estimated charges above $10 | Ceiling reached | Stop submitting. Inspect Cost Explorer, decide on a change, then resubmit. |
 
@@ -100,8 +102,8 @@ Two prerequisites for these signals:
 
 ## 4. Reading a log line
 
-Both functions emit one JSON object per line on stdout. CloudWatch Logs Insights query for
-one job:
+All three functions emit one JSON object per line on stdout. CloudWatch Logs Insights
+query for one job:
 
 ```text
 fields @timestamp, event, state, failure_category, retryable, processing_ms, media_size_bytes
@@ -237,3 +239,168 @@ Once a month, read the bill; never induce it.
 Do not generate load, extra submissions, or a synthetic month to "test" the ceiling.
 Constitution principle V (v1.1.0) makes the ceiling a guardrail, not a test target: it is
 justified by arithmetic and monitored from billing data.
+
+---
+
+## 11. The Telegram bot
+
+The bot is a second front door, not a second service. It calls the same submission path,
+worker and presigner as the terminal API, and it adds one function behind its own HTTP
+API, one SNS topic the worker publishes terminal job events to, one hourly health check,
+and two alarms. It reads the token, the webhook secret and the allowlist from SSM in one
+call per webhook delivery and per health check, so no secret is an environment variable.
+
+Its logs are in `/aws/lambda/ytdl-<env>-bot`. Every webhook delivery writes one line with
+`event = "update"` and an `outcome`: `accepted`, `reissued`, `in_progress`,
+`rate_limited`, `refused`, `command:<name>`, `format_hint`, `duplicate`, `malformed`,
+`unauthenticated`, `ignored`, or `failed`. A delivery that failed internally also writes
+`event = "update_failed"` with the exception's class name, and the hourly check writes one
+`webhook_health` line carrying the embedded metric.
+
+**The sentences a user can receive.** A failure arrives as the service's own fixed
+sentence, followed by `Send the request again.` only when the job was marked retryable.
+The strings live in `app/src/ytdl/errors.py` and `app/src/ytdl/bot/messages.py`.
+
+| Sentence | Cause | Operator action |
+|----------|-------|-----------------|
+| The submitted link is not a supported single YouTube video. | Wrong host, malformed id, playlist, channel, or live link. Refused before any job, so nothing was stored or charged. | Fix the link. Nothing to repair in the service. |
+| The source refused this video. It may be private, removed, or unavailable in this region. | `unsupported_media`, not retryable. | Do not send it again. The content is out of scope, as in section 2. |
+| The video is longer or larger than this service allows. | `limit_exceeded`: over `MAX_DURATION_SECONDS` or `MAX_OUTPUT_BYTES`. | Resending gives the same answer. These are configuration values. |
+| The source was temporarily unreachable; the same request may succeed later. Send the request again. | `upstream_problem`, retryable: throttling, a reset, a timeout. | Wait a few minutes, then resend. A retry costs one submission. |
+| The source blocked this request; check the service configuration before submitting again. | `upstream_problem`, not retryable: the known egress block. | Section 6 is the remedy. Do not resend before changing the configuration. |
+| The job could not be completed because of an internal error; try again later. Send the request again. | `internal_error`: storage, the 780 s deadline, an unexpected exception. | Read the worker log for the `job_id`. One resend is reasonable; a repeat is a defect. |
+| The stored file has expired; submit the video link again. | The job finished, but its file was already gone when the completion message was built. | Nothing to repair. The same request starts a new download. |
+
+Three more sentences are not failures and need no repair: `This bot is private.` for an
+account outside the allowlist (no job, no charge, and no hint of what the bot does),
+`This bot only works in a private chat.` for a group, and `Hourly limit reached. Capacity
+returns at <time> UTC.` for the shared rate window, which creates no job.
+
+An expired link is not the expired-result row. A link that lived its 60 minutes is
+replaced from the stored file when the operator sends the same request again, with no
+second download; the expired-result sentence means the file itself was gone.
+
+**Alarm `ytdl-<env>-bot-errors`.** AWS/Lambda `Errors` on the bot function, sum over five
+minutes, alarm above zero. It counts invocations that raised: a job event that could not
+be delivered, a cold start that could not read its configuration. A webhook delivery that
+fails internally is caught and answered `500`, so it appears in the log group as
+`update_failed` but does not raise this alarm on its own; Telegram retries it either way.
+
+Response, in order:
+
+1. Read `/aws/lambda/ytdl-<env>-bot` and group by `event` and `outcome`.
+   `update_failed` points at the webhook path, `health_failed` at the hourly check,
+   `job_event_missing` or `job_event_malformed` at an SNS delivery.
+2. `make bot-health ENV=<env>`. It calls Telegram once and prints the registration,
+   `pending_update_count`, `max_connections` and `allowed_updates`.
+3. If that shows no URL at all, the registration or the token is at fault: follow the
+   webhook-health response below. If the job record carries a `failure_category`, section
+   2 applies instead; the bot only relays that sentence.
+
+**Alarm `ytdl-<env>-bot-webhook-health`.** Namespace `YTDL/Bot`, metric
+`WebhookHealthy`, dimension `Environment`, statistic `Minimum`, one-hour periods, alarm
+when the value is below 1 for two consecutive periods. The hourly `{"action": "health"}`
+invocation emits `1` when `getWebhookInfo` reports exactly the environment's webhook URL
+and no delivery error in the previous hour, and `0` otherwise. Missing data is treated as
+breaching on purpose: a check that stopped running is itself the failure, so the alarm can
+fire without Telegram being at fault.
+
+Response, in order:
+
+1. `make bot-health ENV=<env>`. On a healthy bot the `url` line equals
+   `terraform -chdir=infra output -raw bot_webhook_url` and `allowed_updates` is
+   `['message']`.
+2. When `url` is empty or `None`, read Telegram's full answer, which carries the reason:
+
+   ```bash
+   TG_TOKEN=$(make -s bot-token ENV=<env>)
+   curl -s "https://api.telegram.org/bot$TG_TOKEN/getWebhookInfo" | python3 -m json.tool
+   ```
+
+   An empty `url` means the registration is gone: re-register (below). An `error_code`
+   of `401` means the token was revoked: rotate it, then re-register. A non-empty `url`
+   with a recent `last_error_message` means Telegram cannot deliver to that address.
+3. No datapoint at all, rather than a `0`, points at the hourly rule
+   `ytdl-<env>-bot-health`: check that it is enabled and that its Lambda permission
+   survives.
+
+**Re-register the webhook.** The registration is owned by
+`terraform_data.telegram_webhook`, so the reviewed way to recreate it is to let Terraform
+replace that resource. The destroy phase removes the old registration and the create phase
+sets the new one, both through `infra/scripts/telegram-webhook.sh`, which reads the token
+from SSM at run time.
+
+```bash
+make outputs ENV=<env> >/dev/null   # re-initialise that backend first
+terraform -chdir=infra apply -replace=terraform_data.telegram_webhook \
+  -var-file=env/<env>.tfvars -var image_tag=<current-tag>
+```
+
+`TF_VAR_telegram_bot_token` must be exported for that apply, as for any other. Confirm
+with `make bot-health ENV=<env>`: the `url` line is back.
+
+**Rotate the bot token.** Rotate when the token was revoked in BotFather, or on suspicion
+that it leaked. A revoked token makes every call answer `401`, so the bot cannot reply and
+the hourly check reports `0`. The parameter name is the `telegram_token_parameter_name`
+output of `infra/outputs.tf`.
+
+```bash
+make outputs ENV=<env> >/dev/null
+NAME=$(terraform -chdir=infra output -raw telegram_token_parameter_name)
+aws ssm put-parameter --name "$NAME" --type SecureString --overwrite --value '<new token>'
+```
+
+Then re-register the webhook, using the command above. The order matters: the script
+authenticates with whatever value SSM holds, so the write comes first. The bot itself reads
+the token per message, so no image is rebuilt and no deployment is needed for it to start
+using the new value.
+
+Terraform still holds the previous token from your last `TF_VAR_telegram_bot_token`, so
+the next apply would write it back. Export the new value in the same shell before that
+apply. Doing the whole rotation that way, export then apply, rewrites the same parameter.
+
+**Change the allowlist.** The list is one SSM parameter, written from
+`TF_VAR_telegram_approved_user_ids` and read on every message, so a change governs the
+next message with no cache to wait out.
+
+```bash
+export TF_VAR_telegram_approved_user_ids='["111111111","222222222"]'
+make outputs ENV=<env> >/dev/null
+terraform -chdir=infra apply -var-file=env/<env>.tfvars -var image_tag=<current-tag>
+```
+
+That apply rewrites one parameter and nothing else: no image is rebuilt, no function is
+redeployed. A removed account is refused on its next message and sees none of its earlier
+items, because every listing is scoped to the sender. An empty list approves nobody, which
+is the safe default.
+
+**Remove the webhook: two steps.** A destroy-time provisioner only runs while its resource
+block is still in the configuration, so deleting the block outright skips deregistration
+and leaves Telegram posting to a dead URL. Add a count first, apply, then remove the block.
+
+```hcl
+resource "terraform_data" "telegram_webhook" {
+  count = 0
+  # ... unchanged
+}
+```
+
+An `apply` with `count = 0` removes the resource and its destroy provisioner calls
+`deleteWebhook`. Then delete the block and apply again; nothing is left in state, so the
+second apply changes nothing. The same resource is not referenced elsewhere, so the
+`count` needs no other edit.
+
+A full `make destroy ENV=<env>` does not need those steps. The webhook resource depends on
+the three SSM parameters, so its deregistration runs before they are deleted and the script
+still has a token to authenticate with. The proof is Telegram's own answer, so read the
+token before destroying, while the parameter still exists:
+
+```bash
+TG_TOKEN=$(make -s bot-token ENV=<env>)
+make destroy ENV=<env>
+curl -s "https://api.telegram.org/bot$TG_TOKEN/getWebhookInfo" | python3 -m json.tool
+```
+
+Expected: `"url": ""`. A non-empty URL means a registration survived, and the teardown is not
+complete. If the deregistration step fails, the destroy stops on that provisioner rather
+than finishing quietly.

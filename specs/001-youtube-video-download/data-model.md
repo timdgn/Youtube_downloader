@@ -145,6 +145,7 @@ A value object, resolved before any download starts.
 | `480p` | 480 | actual height | Next lower rendition if 480 absent |
 | `360p` | 360 | actual height | Lowest available |
 | `1440p`, `2160p`, anything above | capped to 1080 | actual height | Cap is reported, never an error |
+| any of the above, when nothing exists at or below the ceiling | unchanged | lowest admissible height | Lowest rendition at or below `MAX_HEIGHT`; the produced quality is reported, never the ceiling |
 
 Whatever is produced is written to `produced_quality`, and the job reports that value,
 not the requested one (FR-010, FR-011).
