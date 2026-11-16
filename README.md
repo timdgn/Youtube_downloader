@@ -139,6 +139,7 @@ make lint           # ruff check plus format check
 make tf-check       # terraform fmt -check and validate, both roots
 make image          # both arm64 images, tagged with the current commit
 make test-e2e       # opt-in, drives a deployed stack with real URLs
+make outputs ENV=dev  # re-init that backend, then print its outputs
 ```
 
 ```bash

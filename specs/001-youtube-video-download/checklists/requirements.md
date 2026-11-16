@@ -43,7 +43,7 @@ What was proven, and against what:
 
 | Item | Status | Evidence |
 |------|--------|----------|
-| Unit and contract suites | PASS | 550 tests: 418 unit, 132 contract, all offline |
+| Unit and contract suites | PASS | 551 tests: 419 unit, 132 contract, all offline |
 | Lint and formatting | PASS | `ruff check` and `ruff format --check` clean over `app/` |
 | Terraform validity | PASS | `validate` clean in both roots; both lock files committed |
 | Container packaging | PASS | both images built for arm64; handler modules import inside the images |

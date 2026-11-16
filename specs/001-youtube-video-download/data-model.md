@@ -212,7 +212,7 @@ The deployment unit. All of it is Terraform variables; none of it is code branch
 | `worker_ephemeral_storage_mb` | 10240 | 10240 | Must exceed 2 × `max_output_bytes` |
 | `api_token` | generated | generated | `random_password`, stored in SSM |
 | `alarm_email` | empty | operator-supplied | SNS subscription for alarms |
-| `ytdlp_cookies_s3_uri` | empty | empty | Optional, see research D-14 |
+| `ytdlp_cookies_s3_uri` | set when the operator supplies cookies, e.g. `s3://<media-bucket>/config/cookies.txt` | empty | Optional; any non-empty value enables the hook, which reads `config/cookies.txt` from that environment's own bucket. See research D-14 |
 | `ytdlp_proxy_param` | empty | empty | Optional, SSM parameter name |
 
 Every resource carries `Project` and `Environment` tags (constitution principle III).

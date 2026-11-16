@@ -104,6 +104,21 @@ export JOB=$(jq -r .job_id /tmp/job.json)
 Expected: `202` with `state: "accepted"` in under 3 seconds. This is SC-001, measured
 with `curl -w '%{time_total}'`. The command returns before any media moves.
 
+**If the job fails with `upstream_problem` and `retryable: false`**, YouTube is refusing
+the Lambda egress address (research D-14). Export cookies from a signed-in browser
+session in Netscape format, upload them to this environment's bucket, and submit again.
+The hook is enabled by any non-empty `ytdlp_cookies_s3_uri` in `env/<env>.tfvars`; the
+worker reads the fixed key `config/cookies.txt` at cold start.
+
+```bash
+aws s3 cp cookies.txt "s3://$(terraform -chdir=infra output -raw media_bucket)/config/cookies.txt"
+```
+
+Check the export before blaming the network: a file whose session cookies have expired
+looks present but authenticates nothing. On 2026-11-16, an export with 136 of 160
+cookies past expiry still produced the hard block, while a fresh export (23 cookies,
+none expired) completed the same video on the first attempt.
+
 ---
 
 ## 5. Poll the job

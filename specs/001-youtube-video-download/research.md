@@ -526,13 +526,21 @@ root.
 **Decision**: One structured JSON log line per event, correlated by `job_id`, with a
 fixed field set and no URLs, tokens, headers, or account identifiers. Custom metrics
 are emitted with CloudWatch Embedded Metric Format from the same log lines (no extra
-API calls). Six alarms publish to one SNS topic: API 5xx rate, worker errors, worker
-throttles, worker p95 duration above 600 s, DLQ depth above zero, and estimated charges
-at $5 and $10.
+API calls). Seven alarms: five operational ones (API 5xx rate, worker errors, worker
+throttles, worker p95 duration above 600 s, DLQ depth above zero) publish to the stack's
+SNS topic, and the two budget alarms (estimated charges at $5 and $10) publish to a
+second topic in `us-east-1`.
 
 **Rationale**: principle V names exactly these alarms. EMF keeps metrics free of
 `PutMetricData` calls and out of the request path. A DLQ alarm at "greater than zero"
 is correct for a pipeline where any dead letter is a defect.
+
+**Corrected during the first deployment (2026-11-16)**: the two budget alarms cannot
+share the stack's topic. A CloudWatch alarm can only act on a topic in its own region,
+and `AWS/Billing` exists only in `us-east-1`, so the pair needs its own topic there and
+its own confirmed subscription. The first apply failed with `Invalid region eu-west-3
+specified. Only us-east-1 is supported`, which is the topic region, not the alarm
+region.
 
 **Alternatives considered**:
 - *X-Ray tracing*: useful for latency attribution, but the pipeline is three hops and

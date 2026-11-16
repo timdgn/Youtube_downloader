@@ -4,6 +4,10 @@
 
 **Input**: Feature specification from `specs/001-youtube-video-download/spec.md`
 
+**Status**: implemented and verified on 2026-11-16. Dev is live in `eu-west-3` (Paris);
+see `tasks.md` for the final task state and `checklists/requirements.md` for the
+verification record. The only open item is the cost-ceiling drill (T101).
+
 **Note**: Filled in by `/speckit.plan`. Phase 0 and Phase 1 artifacts are generated
 alongside this file.
 
@@ -75,7 +79,7 @@ library, no CLI to install, no web UI.
   900-second window
 
 **Scale/Scope**: One operator, one AWS account, 100 videos per month, 2 environments
-(`dev`, `prod`), roughly 30 Terraform resources, 3 HTTP routes, 1 queue, 1 table, 1
+(`dev`, `prod`), 38 Terraform resources per environment, 3 HTTP routes, 1 queue, 1 table, 1
 bucket, 2 functions.
 
 ---
@@ -105,7 +109,7 @@ bucket, 2 functions.
 | IV.3 | Test-first | default suite offline and deterministic; end-to-end separate? | PASS | `make test` offline; `make test-e2e` opt-in against dev |
 | IV.4 | Test-first | input validation a tested boundary? | PASS | Rejection cases enumerated in FR-002 and asserted both at unit and contract level |
 | V.1 | Operations | structured JSON logs, one line per event, correlated by job id, no secrets or full URLs? | PASS | Logger with a fixed field allowlist; API access log configured to omit query strings and headers (FR-015, SC-009) |
-| V.2 | Operations | alarms before launch for errors, throttles, p95 duration, DLQ depth, spend, each with a named response? | PASS | Six alarms to one SNS topic; runbook table in quickstart step 14 (D-17) |
+| V.2 | Operations | alarms before launch for errors, throttles, p95 duration, DLQ depth, spend, each with a named response? | PASS | Seven alarms to two topics: five operational in the stack region, two budget in `us-east-1` because a CloudWatch alarm can only act on a topic in its own region; runbook table in `docs/runbook.md` (D-17) |
 | V.3 | Operations | rate limited and concurrency capped? | PASS | Hourly conditional counter plus worker reserved concurrency of 2; stage throttling as a backstop (D-10) |
 | V.4 | Operations | explicit cost ceilings: duration, resolution, lifecycle, documented monthly budget? | PASS | 60 min, 1080p, 4 GB, 7-day lifecycle, $10 ceiling with alarms at $5 and $10 (D-02) |
 | V.5 | Operations | failures classified and surfaced as distinct actionable errors? | PASS | Five fixed categories plus `retryable` (D-13, contracts/api.md) |
@@ -195,7 +199,7 @@ infra/
 ├── state.tf                   # DynamoDB table, queue, dead-letter queue
 ├── functions.tf               # ECR, roles, log groups, both functions, event source mapping
 ├── api.tf                     # HTTP API, stage, routes, access logging
-├── alarms.tf                  # SNS topic and six alarms
+├── alarms.tf                  # Two SNS topics (one per alarm region), seven alarms
 ├── outputs.tf                 # Base URL, bucket, function names
 └── env/
     ├── dev.tfvars
