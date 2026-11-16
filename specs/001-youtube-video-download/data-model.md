@@ -14,8 +14,9 @@ durable state between invocations.
 
 The durable record of one request for one video. One item in DynamoDB.
 
-**Identity**: `job_id`, an opaque string, time-ordered (a base-36 millisecond
-timestamp plus 10 random characters). Not a sequential counter, and not enumerable.
+**Identity**: `job_id`, an opaque string of 14 characters: 8 base-36 characters holding
+the millisecond timestamp, then 6 random characters. Time-ordered and unique within a
+millisecond. Not a sequential counter, and not enumerable.
 
 **Key**: partition key `pk = "JOB#" + job_id`. No sort key.
 
@@ -41,7 +42,7 @@ timestamp plus 10 random characters). Not a sequential counter, and not enumerab
 | `media_size_bytes` | number or null | no | extraction | Verified against the stored object |
 | `media_created_at` | number or null | no | stored | Epoch seconds |
 | `media_expires_at` | number or null | no | derived | Epoch seconds, creation + 7 days |
-| `attempt` | number | yes | transitions | Starts at 1, incremented on each claim |
+| `attempt` | number | no | transitions | Absent at creation; set to 1 on the first claim, incremented on each further claim, never above 2 |
 | `duration_seconds` | number or null | no | extraction | Source duration, for the audit entry |
 | `processing_ms` | number or null | no | worker | Wall clock from claim to completion |
 | `ttl` | number | yes | derived | Epoch seconds, `media_expires_at` + 30 days |

@@ -44,9 +44,6 @@ data "aws_iam_policy_document" "api" {
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
       "dynamodb:TransactWriteItems",
-      # The rate-window guard is a ConditionCheck inside the same transaction as
-      # the job write, and DynamoDB authorises each element of a transaction.
-      "dynamodb:ConditionCheckItem",
     ]
     resources = [aws_dynamodb_table.jobs.arn]
   }
@@ -97,6 +94,15 @@ data "aws_iam_policy_document" "worker" {
   statement {
     sid       = "ReadWriteOutputMedia"
     actions   = ["s3:GetObject", "s3:PutObject"]
+    resources = ["${aws_s3_bucket.media.arn}/output/*"]
+  }
+
+  # The adapter uploads with boto3's managed transfer, which is multipart above
+  # 8 MB and aborts the upload when it fails. PutObject covers the part writes;
+  # abort needs its own action.
+  statement {
+    sid       = "AbortIncompleteUploads"
+    actions   = ["s3:AbortMultipartUpload"]
     resources = ["${aws_s3_bucket.media.arn}/output/*"]
   }
 
