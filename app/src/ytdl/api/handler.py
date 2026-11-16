@@ -14,7 +14,7 @@ import boto3
 
 from ytdl import keys, quality
 from ytdl.adapters.dynamo import DynamoRepository, RateLimited
-from ytdl.adapters.s3 import MediaStore
+from ytdl.adapters.s3 import MediaStore, s3_client
 from ytdl.adapters.sqs import JobQueue
 from ytdl.api import routes
 from ytdl.auth import TokenProvider, Unauthorized, check_bearer
@@ -266,7 +266,7 @@ def _build() -> Api:
     return Api(
         repo=DynamoRepository(boto3.client("dynamodb"), config.table_name),
         queue=JobQueue(boto3.client("sqs"), config.queue_url),
-        store=MediaStore(boto3.client("s3"), config.media_bucket),
+        store=MediaStore(s3_client(), config.media_bucket),
         tokens=TokenProvider(config.token_param_name, boto3.client("ssm")),
         config=config,
     )

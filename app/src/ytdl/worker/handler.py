@@ -22,7 +22,7 @@ import boto3
 from ytdl import errors, keys, quality, states
 from ytdl.adapters.dynamo import DynamoRepository
 from ytdl.adapters.extractor import ExtractionError, Extractor
-from ytdl.adapters.s3 import MediaStore
+from ytdl.adapters.s3 import MediaStore, s3_client
 from ytdl.config import Config, load_config
 from ytdl.formats import NoUsableFormat
 from ytdl.logging import StructuredLogger, get_logger
@@ -220,7 +220,7 @@ def handler(event: dict[str, Any], context: object = None) -> dict[str, list[dic
 def _build_worker() -> Worker:
     config = load_config()
     logger = get_logger(FUNCTION_NAME)
-    store = MediaStore(boto3.client("s3"), config.media_bucket)
+    store = MediaStore(s3_client(), config.media_bucket)
     extractor = Extractor(
         cookies_path=_cookies_hook(store, config, logger),
         proxy=_proxy_hook(config, logger),

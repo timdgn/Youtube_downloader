@@ -640,3 +640,23 @@ def test_fractional_duration_survives_a_round_trip() -> None:
 
     assert job["duration_seconds"] == 12.5
     json.dumps(job)
+
+
+def test_s3_client_pins_the_regional_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A presigned URL must not mix the global host with a regional signature."""
+    import ytdl.adapters.s3 as s3_module
+
+    captured: dict[str, object] = {}
+
+    def fake_client(name: str, **kwargs: object) -> object:
+        captured["name"] = name
+        captured.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(s3_module.boto3, "client", fake_client)
+
+    s3_module.s3_client("eu-west-3")
+
+    assert captured["name"] == "s3"
+    assert captured["region_name"] == "eu-west-3"
+    assert captured["endpoint_url"] == "https://s3.eu-west-3.amazonaws.com"

@@ -5,9 +5,29 @@ from __future__ import annotations
 import os
 from typing import Any
 
+import boto3
 from botocore.exceptions import ClientError
 
 _MISSING_CODES = frozenset({"404", "NoSuchKey", "NotFound"})
+
+
+def s3_client(region: str | None = None) -> Any:
+    """Build an S3 client whose presigned URLs target the regional endpoint.
+
+    botocore signs a presigned URL for the client's region but emits the global
+    ``s3.amazonaws.com`` host, and S3 rejects that mismatch with
+    ``AuthorizationQueryParametersError``. Pinning the endpoint keeps the host and
+    the signature in the same region. Verified: global host answers 307 or 400,
+    the regional host answers 200.
+    """
+    resolved = region or os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION")
+    if not resolved:
+        return boto3.client("s3")
+    return boto3.client(
+        "s3",
+        region_name=resolved,
+        endpoint_url=f"https://s3.{resolved}.amazonaws.com",
+    )
 
 
 class MediaStore:
