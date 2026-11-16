@@ -3,9 +3,10 @@
 # or a function without its allowlist parameter, is not a partial deployment.
 
 locals {
-  # A $default stage's invoke_url carries no trailing slash, so one join gives
-  # the exact URL registered with Telegram and compared by the health check.
-  bot_webhook_url = "${aws_apigatewayv2_stage.bot.invoke_url}/telegram/webhook"
+  # A $default stage's invoke_url can carry a trailing slash, so trim it before
+  # the join: one slash in the registered URL is what Telegram, the health check
+  # and the tutorial all state.
+  bot_webhook_url = "${trimsuffix(aws_apigatewayv2_stage.bot.invoke_url, "/")}/telegram/webhook"
 }
 
 resource "aws_cloudwatch_log_group" "bot_access" {
@@ -284,6 +285,11 @@ resource "aws_ssm_parameter" "telegram_approved_user_ids" {
 # script is the part a reviewer can read (research D-02). A destroy provisioner
 # may only reference self, so every value is copied into input first.
 resource "terraform_data" "telegram_webhook" {
+  # Changing the URL must re-run both provisioners, so it is a replacement
+  # trigger: an in-place update of `input` alone would leave Telegram pointing at
+  # the old address while the environment and the health check moved on.
+  triggers_replace = local.bot_webhook_url
+
   input = {
     url              = local.bot_webhook_url
     token_parameter  = local.telegram_token_parameter_name
