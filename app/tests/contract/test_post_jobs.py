@@ -191,7 +191,7 @@ def test_accept_writes_the_documented_job_item() -> None:
     assert all(value is not None for value in item.values())
 
 
-def test_accept_stores_the_requested_quality_verbatim_without_capping() -> None:
+def test_accept_stores_the_requested_quality_with_its_capped_height() -> None:
     dynamo, media, queue = _isolation()
     response = _submit(_api(dynamo, media, queue), quality="720p")
     job_id = json.loads(response["body"])["job_id"]
@@ -199,7 +199,8 @@ def test_accept_stores_the_requested_quality_verbatim_without_capping() -> None:
     item = dynamo.items[f"JOB#{job_id}"]
 
     assert item["requested_quality"] == "720p"
-    assert "requested_height" not in item
+    assert item["requested_height"] == 720
+    assert queue.messages[0]["requested_height"] == 720
 
 
 def test_accept_treats_a_null_quality_as_absent() -> None:

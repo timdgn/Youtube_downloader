@@ -76,10 +76,17 @@ class DynamoRepository:
         return _without_partition_key(item) if item else None
 
     def claim_job(self, job_id: str, now_epoch: int, now_iso: str) -> dict[str, Any] | None:
-        """Move accepted or stale processing to processing, incrementing attempt."""
+        """Move accepted, stale processing, or a retryable failure to processing.
+
+        Every claim increments ``attempt``, so the retry branch can stop after
+        ``states.MAX_ATTEMPTS`` claims.
+        """
         values = {
             ":accepted": states.ACCEPTED,
             ":processing": states.PROCESSING,
+            ":failed": states.FAILED,
+            ":true": True,
+            ":max": states.MAX_ATTEMPTS,
             ":now": now_iso,
             ":stale": _iso(now_epoch - states.STALE_CLAIM_SECONDS),
             ":zero": 0,
@@ -96,6 +103,7 @@ class DynamoRepository:
                 ConditionExpression=states.transition_condition(states.PROCESSING),
                 ExpressionAttributeNames={
                     "#state": "state",
+                    "#failure_retryable": "failure_retryable",
                     "#updated_at": "updated_at",
                     "#attempt": "attempt",
                 },

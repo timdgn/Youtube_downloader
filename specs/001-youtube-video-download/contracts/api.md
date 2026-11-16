@@ -45,7 +45,7 @@ request is open.
 | Field | Type | Required | Rules |
 |-------|------|----------|-------|
 | `url` | string | yes | 8 to 2048 characters. Must resolve to a single YouTube video. Share links, `shorts`, `embed`, and links with extra parameters are normalised. Playlist, channel, and live URLs are rejected. |
-| `quality` | string or null | no | One of `360p`, `480p`, `720p`, `1080p`. Absent or null means the configured ceiling. Values above the ceiling are capped, not rejected. Any other value is `400 invalid_input`. |
+| `quality` | string or null | no | One of `360p`, `480p`, `720p`, `1080p`, `1440p`, `2160p`. Absent or null means the configured ceiling. Values above the ceiling are capped, not rejected. Any other value is `400 invalid_input`. |
 
 **Response 202 Accepted**
 

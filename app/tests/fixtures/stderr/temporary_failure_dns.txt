@@ -1,0 +1,3 @@
+[youtube] Extracting URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+WARNING: [youtube] dQw4w9WgXcQ: Unable to download webpage: <urlopen error [Errno -3] Temporary failure in name resolution>
+ERROR: unable to download video data: <urlopen error [Errno -3] Temporary failure in name resolution>

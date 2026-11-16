@@ -1,0 +1,4 @@
+[youtube] Extracting URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+[youtube] dQw4w9WgXcQ: Downloading webpage
+[youtube] dQw4w9WgXcQ: Downloading android client API JSON
+ERROR: [youtube] dQw4w9WgXcQ: Private video. Sign in if you've been granted access to this video

@@ -1,4 +1,10 @@
-"""The worker's US1 happy-path pipeline (T053)."""
+"""The worker pipeline (T053, T067, T071, T081).
+
+Probe, enforce the caps, select a format pair, download, remux, verify the size,
+probe the output, upload, and return the completion fields. Every decision that
+can refuse the job is taken before the media transfer, so a refused job costs no
+bandwidth.
+"""
 
 from __future__ import annotations
 
@@ -8,34 +14,28 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from ytdl import keys
+from ytdl import errors, formats, keys, limits, quality
 from ytdl.config import Config
 from ytdl.worker.remux import probe_output, remux_to_mp4
 
 MEDIA_RETENTION_SECONDS = 604_800
+DEADLINE_SECONDS = 780
 
 _SOURCE_URL = "https://www.youtube.com/watch?v={video_id}"
 _OUTPUT_FILENAME = "output.mp4"
-_QUALITY_HEIGHTS = (360, 480, 720, 1080)
+_CONTENT_TYPE_MEDIA = "video/mp4"
 
 
-def quality_label(height: int | None) -> str | None:
-    """Map a produced height onto the nearest label at or below it.
+class LimitExceeded(Exception):
+    """A configured cap refused the job, before or after the transfer."""
 
-    Never rounds up: a height below 360 has no label, and a height between two
-    labels reports the lower one. US3 moves this into ``ytdl.quality``.
-    """
-    if height is None:
-        return None
-    for label in reversed(_QUALITY_HEIGHTS):
-        if height >= label:
-            return f"{label}p"
-    return None
+    def __init__(self, failure: errors.Failure) -> None:
+        super().__init__(failure.category)
+        self.failure = failure
 
 
-def format_selector(max_height: int) -> str:
-    """US1's fixed selector: H.264 video plus AAC audio, or the best fallback."""
-    return f"bv*[height<={max_height}][vcodec^=avc1]+ba[acodec^=mp4a]/b[height<={max_height}]/b"
+class DeadlineExceeded(Exception):
+    """The soft deadline passed before Lambda's own ceiling would be reached."""
 
 
 def process_job(
@@ -49,10 +49,11 @@ def process_job(
     probe_fn: Callable[[str], dict[str, Any]] = probe_output,
     now: Callable[[], float] | None = None,
 ) -> dict[str, Any]:
-    """Probe, download, remux, probe the output, upload, and return the completion fields.
+    """Run the whole pipeline and return the completion fields.
 
-    Raises rather than swallowing, so the caller decides whether the job is retryable.
-    No environment reads and no boto3 clients: every boundary is injected.
+    Raises rather than swallowing, so the caller decides whether the job is
+    retryable. No environment reads and no boto3 clients: every boundary is
+    injected.
     """
     clock = time.time if now is None else now
     started = clock()
@@ -63,18 +64,35 @@ def process_job(
 
     metadata = extractor.probe(url)
     duration = _duration_seconds(metadata.get("duration"))
+    _enforce(limits.check_duration(duration, config.max_duration_seconds))
 
-    source = extractor.download(url, format_selector(config.max_height), workdir)
+    ceiling = min(int(job.get("requested_height") or config.max_height), config.max_height)
+    selection = formats.select(metadata, ceiling)
+
+    estimated = _estimated_size(metadata, selection)
+    if estimated is not None:
+        _enforce(limits.check_size(estimated, config.max_output_bytes))
+
+    _check_deadline(clock, started)
+
+    source = extractor.download(url, selection.format_selector, workdir)
+    _check_deadline(clock, started)
+
     output = os.path.join(workdir, _OUTPUT_FILENAME)
     remux_fn(source, output)
 
+    if os.path.getsize(output) > config.max_output_bytes:
+        raise LimitExceeded(_limit_failure())
+
     produced = probe_fn(output)
     height = _height(produced.get("height"))
+    label = quality.label_for(height)
+
     media = keys.media_key(job_id, video_id)
     size = store.put_file(
         output,
         media,
-        "video/mp4",
+        _CONTENT_TYPE_MEDIA,
         {
             "job-id": job_id,
             "produced-height": "" if height is None else str(height),
@@ -88,15 +106,72 @@ def process_job(
         "media_size_bytes": size,
         "media_created_at": created_at,
         "media_expires_at": created_at + MEDIA_RETENTION_SECONDS,
-        "produced_height": height,
-        "produced_quality": quality_label(height),
-        "produced_vcodec": produced.get("vcodec"),
-        "produced_acodec": produced.get("acodec"),
+        "produced_vcodec": _text(produced.get("vcodec")) or selection.vcodec,
+        "produced_acodec": _text(produced.get("acodec")) or selection.acodec,
         "processing_ms": max(0, int((clock() - started) * 1000)),
     }
+    if height is not None:
+        fields["produced_height"] = height
+    if label is not None:
+        fields["produced_quality"] = label
     if duration is not None:
         fields["duration_seconds"] = duration
     return fields
+
+
+def _enforce(decision: limits.Decision) -> None:
+    """Raise for a refused decision; an allowed one carries no failure."""
+    if decision.allowed or decision.failure is None:
+        return
+    raise LimitExceeded(decision.failure)
+
+
+def _check_deadline(clock: Callable[[], float], started: float) -> None:
+    if clock() - started > DEADLINE_SECONDS:
+        raise DeadlineExceeded("pipeline exceeded its soft deadline")
+
+
+def _estimated_size(metadata: dict[str, Any], selection: formats.Selection) -> int | None:
+    """Sum the advertised sizes of the selected ids, or None when one is unknown.
+
+    The selector is ``<video id>+<audio id>`` when the metadata has ids; an
+    expression selector matches no id, so the estimate is unknown and no guess
+    is made.
+    """
+    wanted = selection.format_selector.split("+")
+    if not wanted or not all(wanted):
+        return None
+
+    raw = metadata.get("formats")
+    entries = raw if isinstance(raw, list) else []
+    by_id = {fmt.get("format_id"): fmt for fmt in entries if isinstance(fmt, dict)}
+
+    total = 0
+    for format_id in wanted:
+        fmt = by_id.get(format_id)
+        if fmt is None:
+            return None
+        size = _format_size(fmt)
+        if size is None:
+            return None
+        total += size
+    return total
+
+
+def _format_size(fmt: dict[str, Any]) -> int | None:
+    for key in ("filesize", "filesize_approx"):
+        value = fmt.get(key)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            return value
+    return None
+
+
+def _limit_failure() -> errors.Failure:
+    return errors.Failure(
+        errors.LIMIT_EXCEEDED,
+        errors.MESSAGES[errors.LIMIT_EXCEEDED],
+        False,
+    )
 
 
 def _duration_seconds(value: Any) -> int | float | None:
@@ -110,5 +185,11 @@ def _duration_seconds(value: Any) -> int | float | None:
 
 def _height(value: Any) -> int | None:
     if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    return value
+
+
+def _text(value: Any) -> str | None:
+    if not isinstance(value, str) or not value.strip():
         return None
     return value

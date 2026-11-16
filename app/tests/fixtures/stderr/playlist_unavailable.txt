@@ -1,0 +1,2 @@
+[youtube:tab] Extracting URL: https://www.youtube.com/playlist?list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf
+ERROR: [youtube:tab] PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf: This playlist does not exist. Sign in if it is a private playlist.

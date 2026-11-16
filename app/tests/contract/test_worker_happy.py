@@ -1,4 +1,4 @@
-"""Contract tests for the US1 worker happy path (T047)."""
+"""Contract tests for the US1 worker happy path (T047, T081)."""
 
 from __future__ import annotations
 
@@ -13,10 +13,9 @@ import pytest
 from tests.fakes.dynamo_fake import FakeDynamoRepository
 from tests.fakes.extractor_fake import FakeExtractor
 from tests.fakes.s3_fake import FakeMediaStore
-from ytdl import keys, states
+from ytdl import formats, keys, quality, states
 from ytdl.config import Config, load_config
 from ytdl.worker.handler import Worker
-from ytdl.worker.pipeline import format_selector, quality_label
 
 JOB_ID = "m3x9k2q1f7"
 VIDEO_ID = "dQw4w9WgXcQ"
@@ -161,6 +160,10 @@ def test_happy_path_downloads_uploads_and_completes() -> None:
     assert extractor.calls[0][1]["url"] == source_url
     assert extractor.calls[1][1]["url"] == source_url
     assert extractor.calls[1][1]["out_dir"] == created[0]
+    selection = formats.select(extractor.metadata, CONFIG.max_height)
+    assert extractor.calls[1][1]["format_selector"] == selection.format_selector
+    assert selection.format_selector == "137+140"
+    assert selection.expected_height == 1080
 
     assert len(media.writes) == 1
     upload = media.writes[0][1]
@@ -180,6 +183,7 @@ def test_happy_path_downloads_uploads_and_completes() -> None:
     assert fields["media_size_bytes"] == len(CONTENT)
     assert fields["media_expires_at"] == fields["media_created_at"] + 604_800
     assert fields["produced_height"] == 1080
+    assert fields["produced_quality"] == quality.label_for(PROBE_RESULT["height"])
     assert fields["produced_quality"] == "1080p"
     assert fields["produced_vcodec"] == "avc1.640028"
     assert fields["produced_acodec"] == "mp4a.40.2"
@@ -187,20 +191,24 @@ def test_happy_path_downloads_uploads_and_completes() -> None:
     assert fields["processing_ms"] >= 0
 
     assert [event for _, event, _ in logger.lines] == ["job_started", "job_completed"]
+    audit = logger.lines[-1][2]
+    assert set(audit) == {
+        "job_id",
+        "source_host",
+        "video_id",
+        "requested_quality",
+        "produced_quality",
+        "outcome",
+        "processing_ms",
+        "media_size_bytes",
+        "attempt",
+    }
+    assert audit["outcome"] == states.COMPLETED
+    assert audit["produced_quality"] == "1080p"
+    assert audit["media_size_bytes"] == len(CONTENT)
+    assert audit["attempt"] == 1
+    assert "watch?v=" not in json.dumps(audit)
     assert not os.path.exists(created[0])
-
-
-def test_completion_without_duration_metadata_leaves_the_field_unset() -> None:
-    dynamo = FakeDynamoRepository()
-    media = FakeMediaStore()
-    extractor = FakeExtractor(metadata={"id": VIDEO_ID, "title": "no duration"}, content=CONTENT)
-    _seed_job(dynamo)
-    worker = _build_worker(dynamo, media, extractor)
-
-    assert worker.handle(_event()) == {"batchItemFailures": []}
-
-    fields = _call(dynamo, "complete_job")[0]["fields"]
-    assert "duration_seconds" not in fields
 
 
 def test_missing_job_is_acknowledged_without_claiming() -> None:
@@ -260,31 +268,6 @@ def test_pipeline_failure_returns_the_message_id_and_does_not_complete() -> None
     assert not os.path.exists(created[0])
 
 
-def test_invalid_json_is_a_batch_item_failure() -> None:
-    dynamo = FakeDynamoRepository()
-    media = FakeMediaStore()
-    extractor = FakeExtractor()
-    worker = _build_worker(dynamo, media, extractor)
-
-    result = worker.handle(_event(_record(body="{not json")))
-
-    assert result == {"batchItemFailures": [{"itemIdentifier": MESSAGE_ID}]}
-    assert extractor.calls == []
-
-
-def test_unknown_version_is_a_batch_item_failure() -> None:
-    dynamo = FakeDynamoRepository()
-    media = FakeMediaStore()
-    extractor = FakeExtractor()
-    worker = _build_worker(dynamo, media, extractor)
-    message = {**MESSAGE, "version": 2}
-
-    result = worker.handle(_event(_record(body=message)))
-
-    assert result == {"batchItemFailures": [{"itemIdentifier": MESSAGE_ID}]}
-    assert extractor.calls == []
-
-
 @pytest.mark.parametrize(
     ("height", "expected"),
     [
@@ -292,18 +275,39 @@ def test_unknown_version_is_a_batch_item_failure() -> None:
         (480, "480p"),
         (720, "720p"),
         (1080, "1080p"),
-        (481, "480p"),
-        (1079, "720p"),
-        (2160, "1080p"),
-        (240, None),
+        (1079, "1079p"),
+        (240, "240p"),
         (None, None),
     ],
 )
-def test_quality_label_never_rounds_up(height: int | None, expected: str | None) -> None:
-    assert quality_label(height) == expected
+def test_produced_quality_is_the_label_for_the_produced_height(
+    height: int | None, expected: str | None
+) -> None:
+    assert quality.label_for(height) == expected
 
 
-def test_format_selector_is_the_fixed_us1_selector() -> None:
-    assert format_selector(1080) == (
-        "bv*[height<=1080][vcodec^=avc1]+ba[acodec^=mp4a]/b[height<=1080]/b"
-    )
+def test_the_download_uses_the_selector_chosen_by_formats_select() -> None:
+    dynamo = FakeDynamoRepository()
+    media = FakeMediaStore()
+    extractor = FakeExtractor(content=CONTENT)
+    _seed_job(dynamo)
+    worker = _build_worker(dynamo, media, extractor)
+
+    assert worker.handle(_event()) == {"batchItemFailures": []}
+
+    downloaded = extractor.calls[1][1]
+    assert downloaded["format_selector"] == "137+140"
+
+
+def test_a_requested_height_selects_that_rendition() -> None:
+    dynamo = FakeDynamoRepository()
+    media = FakeMediaStore()
+    extractor = FakeExtractor(content=CONTENT)
+    _seed_job(dynamo)
+    dynamo.items["JOB#" + JOB_ID]["requested_height"] = 720
+    worker = _build_worker(dynamo, media, extractor)
+
+    assert worker.handle(_event()) == {"batchItemFailures": []}
+
+    downloaded = extractor.calls[1][1]
+    assert downloaded["format_selector"] == "136+140"

@@ -128,6 +128,15 @@ def _claimable(item: dict[str, Any], now_epoch: int) -> bool:
     state = item.get("state")
     if state == states.ACCEPTED:
         return True
+    if state == states.FAILED:
+        # Mirrors the third branch of the real transition condition: a retryable
+        # failure below the attempt cap may be claimed again.
+        return states.can_transition(
+            states.FAILED,
+            states.PROCESSING,
+            retryable=bool(item.get("failure_retryable")),
+            attempt=int(item.get("attempt", 0)),
+        )
     if state != states.PROCESSING:
         return False
     updated_at = item.get("updated_at")

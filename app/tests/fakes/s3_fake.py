@@ -49,7 +49,11 @@ class FakeMediaStore:
         if stored is None:
             return None
         body = stored["body"]
-        return {"size": len(body), "etag": hashlib.md5(body).hexdigest()}
+        return {
+            "size": len(body),
+            "etag": hashlib.md5(body).hexdigest(),
+            "metadata": dict(stored.get("metadata") or {}),
+        }
 
     def presign_get(self, key: str, filename: str, expires_in: int) -> str:
         self.calls.append(

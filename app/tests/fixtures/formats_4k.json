@@ -1,0 +1,116 @@
+{
+  "title": "Big Buck Bunny (4K source, ceiling applies)",
+  "duration": 596,
+  "formats": [
+    {
+      "format_id": "313",
+      "ext": "webm",
+      "height": 2160,
+      "width": 3840,
+      "vcodec": "vp9",
+      "acodec": "none",
+      "tbr": 18000.0,
+      "abr": null,
+      "filesize_approx": 1341000000
+    },
+    {
+      "format_id": "401",
+      "ext": "mp4",
+      "height": 2160,
+      "width": 3840,
+      "vcodec": "av01.0.12M.08",
+      "acodec": "none",
+      "tbr": 14000.0,
+      "abr": null,
+      "filesize_approx": 1043000000
+    },
+    {
+      "format_id": "308",
+      "ext": "webm",
+      "height": 1440,
+      "width": 2560,
+      "vcodec": "vp9",
+      "acodec": "none",
+      "tbr": 9000.0,
+      "abr": null,
+      "filesize_approx": 670500000
+    },
+    {
+      "format_id": "137",
+      "ext": "mp4",
+      "height": 1080,
+      "width": 1920,
+      "vcodec": "avc1.640028",
+      "acodec": "none",
+      "tbr": 4418.0,
+      "abr": null,
+      "filesize": 329141000
+    },
+    {
+      "format_id": "248",
+      "ext": "webm",
+      "height": 1080,
+      "width": 1920,
+      "vcodec": "vp9",
+      "acodec": "none",
+      "tbr": 3894.0,
+      "abr": null,
+      "filesize_approx": 290000000
+    },
+    {
+      "format_id": "136",
+      "ext": "mp4",
+      "height": 720,
+      "width": 1280,
+      "vcodec": "avc1.64001F",
+      "acodec": "none",
+      "tbr": 2200.0,
+      "abr": null,
+      "filesize_approx": 164000000
+    },
+    {
+      "format_id": "135",
+      "ext": "mp4",
+      "height": 480,
+      "width": 854,
+      "vcodec": "avc1.4d401f",
+      "acodec": "none",
+      "tbr": 1101.0,
+      "abr": null,
+      "filesize_approx": 82000000
+    },
+    {
+      "format_id": "134",
+      "ext": "mp4",
+      "height": 360,
+      "width": 640,
+      "vcodec": "avc1.4d401e",
+      "acodec": "none",
+      "tbr": 603.0,
+      "abr": null,
+      "filesize_approx": 45000000
+    },
+    {
+      "format_id": "140",
+      "ext": "m4a",
+      "height": null,
+      "width": null,
+      "vcodec": "none",
+      "acodec": "mp4a.40.2",
+      "tbr": 129.0,
+      "abr": 128.0,
+      "filesize": 9536000
+    },
+    {
+      "format_id": "251",
+      "ext": "webm",
+      "height": null,
+      "width": null,
+      "vcodec": "none",
+      "acodec": "opus",
+      "tbr": 161.0,
+      "abr": 160.0,
+      "filesize": 11920000
+    }
+  ]
+}

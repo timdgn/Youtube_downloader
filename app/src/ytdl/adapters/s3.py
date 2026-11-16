@@ -28,7 +28,7 @@ class MediaStore:
         return os.path.getsize(path)
 
     def head_object(self, key: str) -> dict[str, Any] | None:
-        """Return the object size and ETag, or None when it no longer exists."""
+        """Return the object size, ETag and user metadata, or None when it is gone."""
         try:
             response = self._client.head_object(Bucket=self._bucket, Key=key)
         except ClientError as error:
@@ -36,9 +36,11 @@ class MediaStore:
                 return None
             raise
 
+        metadata = response.get("Metadata")
         return {
             "size": int(response["ContentLength"]),
             "etag": str(response.get("ETag", "")).strip('"'),
+            "metadata": dict(metadata) if isinstance(metadata, dict) else {},
         }
 
     def presign_get(self, key: str, filename: str, expires_in: int) -> str:

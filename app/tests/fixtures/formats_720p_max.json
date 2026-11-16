@@ -1,0 +1,94 @@
+{
+  "title": "Big Buck Bunny (720p maximum)",
+  "duration": 596,
+  "formats": [
+    {
+      "format_id": "136",
+      "ext": "mp4",
+      "height": 720,
+      "width": 1280,
+      "vcodec": "avc1.64001F",
+      "acodec": "none",
+      "tbr": 2200.0,
+      "abr": null,
+      "filesize_approx": 164000000
+    },
+    {
+      "format_id": "247",
+      "ext": "webm",
+      "height": 720,
+      "width": 1280,
+      "vcodec": "vp9",
+      "acodec": "none",
+      "tbr": 1904.0,
+      "abr": null,
+      "filesize_approx": 142000000
+    },
+    {
+      "format_id": "135",
+      "ext": "mp4",
+      "height": 480,
+      "width": 854,
+      "vcodec": "avc1.4d401f",
+      "acodec": "none",
+      "tbr": 1101.0,
+      "abr": null,
+      "filesize_approx": 82000000
+    },
+    {
+      "format_id": "244",
+      "ext": "webm",
+      "height": 480,
+      "width": 854,
+      "vcodec": "vp9",
+      "acodec": "none",
+      "tbr": 952.0,
+      "abr": null,
+      "filesize_approx": 71000000
+    },
+    {
+      "format_id": "134",
+      "ext": "mp4",
+      "height": 360,
+      "width": 640,
+      "vcodec": "avc1.4d401e",
+      "acodec": "none",
+      "tbr": 603.0,
+      "abr": null,
+      "filesize_approx": 45000000
+    },
+    {
+      "format_id": "243",
+      "ext": "webm",
+      "height": 360,
+      "width": 640,
+      "vcodec": "vp9",
+      "acodec": "none",
+      "tbr": 498.0,
+      "abr": null,
+      "filesize_approx": 37000000
+    },
+    {
+      "format_id": "140",
+      "ext": "m4a",
+      "height": null,
+      "width": null,
+      "vcodec": "none",
+      "acodec": "mp4a.40.2",
+      "tbr": 129.0,
+      "abr": 128.0,
+      "filesize": 9536000
+    },
+    {
+      "format_id": "251",
+      "ext": "webm",
+      "height": null,
+      "width": null,
+      "vcodec": "none",
+      "acodec": "opus",
+      "tbr": 161.0,
+      "abr": 160.0,
+      "filesize": 11920000
+    }
+  ]
+}

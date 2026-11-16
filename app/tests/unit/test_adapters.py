@@ -15,6 +15,7 @@ from tests.fakes.dynamo_fake import FakeDynamoRepository
 from tests.fakes.extractor_fake import FakeExtractor
 from tests.fakes.s3_fake import FakeMediaStore
 from tests.fakes.sqs_fake import FakeJobQueue
+from ytdl import states
 from ytdl.adapters.dynamo import DynamoRepository, RateLimited
 from ytdl.adapters.extractor import ExtractionError, Extractor
 from ytdl.adapters.s3 import MediaStore
@@ -148,7 +149,9 @@ def test_claim_job_uses_the_stale_claim_condition() -> None:
     assert item == {"state": "processing"}
     kwargs = client.update_item.call_args.kwargs
     assert kwargs["ConditionExpression"] == (
-        "#state = :accepted OR (#state = :processing AND #updated_at < :stale)"
+        "#state = :accepted OR (#state = :processing AND #updated_at < :stale) OR "
+        "(#state = :failed AND #failure_retryable = :true AND "
+        "if_not_exists(#attempt, :zero) < :max)"
     )
     assert "if_not_exists(#attempt" in kwargs["UpdateExpression"]
     assert "+ :one" in kwargs["UpdateExpression"]
@@ -157,6 +160,39 @@ def test_claim_job_uses_the_stale_claim_condition() -> None:
     assert kwargs["ExpressionAttributeValues"][":processing"] == "processing"
     assert kwargs["ExpressionAttributeValues"][":now"] == NOW_ISO
     assert kwargs["ReturnValues"] == "ALL_NEW"
+
+
+def test_claim_job_carries_the_retry_branch_and_its_values() -> None:
+    repo, client = _repo()
+    client.update_item.return_value = {"Attributes": {"pk": "JOB#a", "state": "processing"}}
+
+    repo.claim_job("a", NOW_EPOCH, NOW_ISO)
+
+    kwargs = client.update_item.call_args.kwargs
+    condition = kwargs["ConditionExpression"]
+    values = kwargs["ExpressionAttributeValues"]
+    names = kwargs["ExpressionAttributeNames"]
+
+    assert "#state = :failed AND #failure_retryable = :true" in condition
+    assert "if_not_exists(#attempt, :zero) < :max" in condition
+    assert values[":failed"] == "failed"
+    assert values[":true"] is True
+    assert values[":max"] == 2
+    assert names["#failure_retryable"] == "failure_retryable"
+
+
+def test_claim_job_cannot_claim_a_non_retryable_failure() -> None:
+    """The retry branch binds :true, so a stored false can never satisfy it."""
+    repo, client = _repo()
+    client.update_item.return_value = {"Attributes": {"pk": "JOB#a", "state": "processing"}}
+
+    repo.claim_job("a", NOW_EPOCH, NOW_ISO)
+
+    values = client.update_item.call_args.kwargs["ExpressionAttributeValues"]
+    assert values[":true"] is True
+    assert (
+        states.can_transition(states.FAILED, states.PROCESSING, retryable=False, attempt=1) is False
+    )
 
 
 def test_claim_job_returns_none_when_the_guard_fails() -> None:
@@ -269,11 +305,26 @@ def test_head_object_maps_a_missing_object_to_none() -> None:
     assert store.head_object("output/a/b.mp4") is None
 
 
-def test_head_object_reports_size_and_etag() -> None:
+def test_head_object_reports_size_etag_and_metadata() -> None:
     store, client = _store()
-    client.head_object.return_value = {"ContentLength": 42, "ETag": '"abc123"'}
+    client.head_object.return_value = {
+        "ContentLength": 42,
+        "ETag": '"abc123"',
+        "Metadata": {"produced-height": "720"},
+    }
 
-    assert store.head_object("output/a/b.mp4") == {"size": 42, "etag": "abc123"}
+    assert store.head_object("output/a/b.mp4") == {
+        "size": 42,
+        "etag": "abc123",
+        "metadata": {"produced-height": "720"},
+    }
+
+
+def test_head_object_defaults_the_metadata_to_an_empty_mapping() -> None:
+    store, client = _store()
+    client.head_object.return_value = {"ContentLength": 7}
+
+    assert store.head_object("output/a/b.mp4") == {"size": 7, "etag": "", "metadata": {}}
 
 
 def test_head_object_does_not_swallow_other_errors() -> None:

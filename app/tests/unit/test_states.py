@@ -7,7 +7,11 @@ import pytest
 from ytdl import states
 from ytdl.states import ACCEPTED, COMPLETED, FAILED, PROCESSING
 
-CLAIM_CONDITION = "#state = :accepted OR (#state = :processing AND #updated_at < :stale)"
+CLAIM_CONDITION = (
+    "#state = :accepted OR (#state = :processing AND #updated_at < :stale) OR "
+    "(#state = :failed AND #failure_retryable = :true AND "
+    "if_not_exists(#attempt, :zero) < :max)"
+)
 
 
 def test_state_constants() -> None:

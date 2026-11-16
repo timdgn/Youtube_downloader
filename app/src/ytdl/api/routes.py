@@ -10,7 +10,6 @@ import json
 from typing import Any
 
 CONTENT_TYPE = "application/json; charset=utf-8"
-QUALITIES = ("360p", "480p", "720p", "1080p")
 
 MESSAGES = {
     "invalid_input": "The submitted link is not a supported single YouTube video.",

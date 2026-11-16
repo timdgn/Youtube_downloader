@@ -1,0 +1,2 @@
+[youtube] Extracting URL: https://www.youtube.com/watch?v=dQw4w9WgXcQ
+ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you are not a bot

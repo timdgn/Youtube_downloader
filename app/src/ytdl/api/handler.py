@@ -12,7 +12,7 @@ from urllib.parse import unquote
 
 import boto3
 
-from ytdl import keys
+from ytdl import keys, quality
 from ytdl.adapters.dynamo import DynamoRepository, RateLimited
 from ytdl.adapters.s3 import MediaStore
 from ytdl.adapters.sqs import JobQueue
@@ -106,7 +106,7 @@ class Api:
         try:
             payload = _payload(event)
             reference = parse_video_url(payload.get("url"))
-            quality = _quality(payload)
+            requested_quality, requested_height = _quality(payload, self._config.max_height)
         except (_BadRequest, InvalidVideoURL):
             return _error("invalid_input", 400)
 
@@ -122,8 +122,9 @@ class Api:
             "source_host": reference.host,
             "video_id": reference.video_id,
         }
-        if quality is not None:
-            job["requested_quality"] = quality
+        if requested_quality is not None:
+            job["requested_quality"] = requested_quality
+            job["requested_height"] = requested_height
 
         rate_pk = keys.rate_key(keys.rate_window(now_epoch), token)
         try:
@@ -152,7 +153,7 @@ class Api:
             "job_id": job_id,
             "video_id": reference.video_id,
             "source_host": reference.host,
-            "requested_height": None,
+            "requested_height": requested_height if requested_quality is not None else None,
             "enqueued_at": created_at,
         }
         try:
@@ -319,15 +320,22 @@ def _payload(event: dict[str, Any]) -> dict[str, Any]:
     return payload
 
 
-def _quality(payload: dict[str, Any]) -> str | None:
-    if "quality" not in payload:
-        return None
+def _quality(payload: dict[str, Any], ceiling: int) -> tuple[str | None, int | None]:
+    """Resolve the optional quality field into the capped label and its height.
+
+    An absent or null value keeps no label and no height, so the job item gains
+    neither field and the message carries ``requested_height: null``.
+    """
+    if "quality" not in payload or payload["quality"] is None:
+        return None, None
+
     value = payload["quality"]
-    if value is None:
-        return None
-    if not isinstance(value, str) or value not in routes.QUALITIES:
+    if not isinstance(value, str):
         raise _BadRequest
-    return value
+    try:
+        return quality.cap_requested(value, ceiling)
+    except quality.InvalidQuality:
+        raise _BadRequest from None
 
 
 def _inside_retention(

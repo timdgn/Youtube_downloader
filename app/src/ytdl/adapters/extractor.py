@@ -31,12 +31,40 @@ class ExtractionError(Exception):
         self.returncode = returncode
 
 
+def hook_args(
+    cookies_path: str | None = None,
+    proxy: str | None = None,
+    player_client: str | None = None,
+) -> list[str]:
+    """The optional D-14 flags, in a stable order, for the values that are supplied."""
+    args: list[str] = []
+    if cookies_path:
+        args += ["--cookies", cookies_path]
+    if proxy:
+        args += ["--proxy", proxy]
+    if player_client:
+        args += ["--extractor-args", f"youtube:player_client={player_client}"]
+    return args
+
+
 class Extractor:
     """Runs yt-dlp as a child process, never through a shell."""
 
-    def __init__(self, timeout_seconds: int = 780, binary: str = "yt-dlp") -> None:
+    def __init__(
+        self,
+        timeout_seconds: int = 780,
+        binary: str = "yt-dlp",
+        cookies_path: str | None = None,
+        proxy: str | None = None,
+        player_client: str | None = None,
+    ) -> None:
         self._timeout_seconds = timeout_seconds
         self._binary = binary
+        self._hooks = hook_args(
+            cookies_path=cookies_path,
+            proxy=proxy,
+            player_client=player_client,
+        )
 
     def probe(self, url: str, extra_args: Sequence[str] = ()) -> dict[str, Any]:
         """Return the metadata JSON for ``url`` without downloading media."""
@@ -45,6 +73,7 @@ class Extractor:
             "--dump-single-json",
             "--no-playlist",
             "--no-warnings",
+            *self._hooks,
             *extra_args,
             url,
         ]
@@ -68,6 +97,7 @@ class Extractor:
             os.path.join(out_dir, _OUTPUT_TEMPLATE),
             "--merge-output-format",
             "mp4",
+            *self._hooks,
             *extra_args,
             url,
         ]
