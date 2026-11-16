@@ -1,0 +1,7 @@
+# prod state key. The bucket is supplied by `make deploy ENV=prod`, which resolves the
+# account id at run time, so this file never carries an account number.
+bucket       = "ytdl-tfstate-<ACCOUNT_ID>"
+key          = "env/prod/terraform.tfstate"
+region       = "eu-west-1"
+use_lockfile = true
+encrypt      = true

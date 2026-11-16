@@ -1,0 +1,33 @@
+[project]
+name = "ytdl"
+version = "0.1.0"
+description = "Personal YouTube download service on AWS Lambda"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3==1.44.3",
+    "botocore==1.44.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest==9.2.0",
+    "pytest-cov==7.1.0",
+    "ruff==0.17.5",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --strict-markers"
+markers = [
+    "e2e: drives a deployed stack; skipped by default",
+]

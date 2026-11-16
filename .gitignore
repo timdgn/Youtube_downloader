@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+
+# Local configuration and secrets
+.env
+.env.*
+*.pem
+*.key
+config/cookies.txt
+
+# Media produced while testing
+*.mp4
+*.webm
+*.mkv
+
+# Backups and editor artefacts
+agent_backup/
+.DS_Store
+.idea/
+.vscode/
+*.swp

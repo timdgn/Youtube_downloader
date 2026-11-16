@@ -1,0 +1,9 @@
+# Backend for the dev environment.
+# Use with: terraform -chdir=infra init -backend-config=backend/dev.backend
+# `make bootstrap` prints the same command with the real account id substituted
+# for <ACCOUNT_ID>.
+bucket       = "ytdl-tfstate-<ACCOUNT_ID>"
+key          = "env/dev/terraform.tfstate"
+region       = "eu-west-1"
+use_lockfile = true
+encrypt      = true
