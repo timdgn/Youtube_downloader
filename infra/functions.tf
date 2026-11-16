@@ -143,6 +143,14 @@ data "aws_iam_policy_document" "worker" {
     ]
   }
 
+  # The worker announces a terminal job on the job-events topic and nothing
+  # else: one topic, one action. The bot turns it into a chat message.
+  statement {
+    sid       = "PublishJobEvents"
+    actions   = ["sns:Publish"]
+    resources = [aws_sns_topic.job_events.arn]
+  }
+
   statement {
     sid       = "WriteOwnLogs"
     actions   = ["logs:CreateLogStream", "logs:PutLogEvents"]
@@ -197,6 +205,12 @@ locals {
     COOKIES_S3_URI       = var.ytdlp_cookies_s3_uri
     PROXY_PARAM_NAME     = var.ytdlp_proxy_param
     PLAYER_CLIENT        = var.ytdlp_player_client
+
+    # The worker publishes here; the bot reports it from /info. Read from the
+    # one version file the Dockerfile installs, so the two cannot drift
+    # (research D-13).
+    JOB_EVENTS_TOPIC_ARN = aws_sns_topic.job_events.arn
+    YTDLP_VERSION        = trimspace(file("${path.module}/../app/ytdlp-version.txt"))
   }
 }
 

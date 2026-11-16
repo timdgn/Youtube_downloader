@@ -186,3 +186,40 @@ variable "image_tag" {
     error_message = "image_tag must be an immutable build tag; \"latest\" is never deployed."
   }
 }
+
+# Telegram bot (feature 002). The token is the one secret Terraform carries: it
+# is exported as TF_VAR_telegram_bot_token and never committed, and it lands in
+# an SSM SecureString, never in an environment variable.
+variable "telegram_bot_token" {
+  description = "Telegram bot token from BotFather, exported as TF_VAR_telegram_bot_token and never committed."
+  type        = string
+  sensitive   = true
+}
+
+variable "telegram_approved_user_ids" {
+  description = "Numeric Telegram account ids allowed to use the bot; empty means nobody, which is the safe default."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for id in var.telegram_approved_user_ids : can(regex("^[0-9]{1,20}$", id))])
+    error_message = "telegram_approved_user_ids must contain numeric account ids only, at most 20 digits each."
+  }
+}
+
+variable "telegram_default_tier" {
+  description = "Tier used when a message carries a link without a resolution word."
+  type        = string
+  default     = "high"
+
+  validation {
+    condition     = contains(["low", "medium", "high", "veryhigh", "mp3"], var.telegram_default_tier)
+    error_message = "telegram_default_tier must be one of low, medium, high, veryhigh or mp3."
+  }
+}
+
+variable "telegram_test_video_id" {
+  description = "Video id the /test command downloads; replaceable without code."
+  type        = string
+  default     = "dQw4w9WgXcQ"
+}

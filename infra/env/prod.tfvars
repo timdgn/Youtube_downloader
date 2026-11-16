@@ -25,3 +25,9 @@ alarm_email = ""
 ytdlp_cookies_s3_uri = ""
 ytdlp_proxy_param    = ""
 ytdlp_player_client  = ""
+
+# Telegram bot. The token is exported as TF_VAR_telegram_bot_token, never a
+# value in this file. The allowlist is empty here on purpose: nobody is served
+# until the operator exports TF_VAR_telegram_approved_user_ids.
+telegram_default_tier  = "high"
+telegram_test_video_id = "dQw4w9WgXcQ"

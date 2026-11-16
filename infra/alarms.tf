@@ -129,6 +129,48 @@ resource "aws_cloudwatch_metric_alarm" "dlq_not_empty" {
   tags = local.tags
 }
 
+resource "aws_cloudwatch_metric_alarm" "bot_errors" {
+  alarm_name          = "${local.name_prefix}-bot-errors"
+  alarm_description   = "The bot raised an error. A webhook 500 makes Telegram retry; read the bot log group for the failing entry shape."
+  namespace           = "AWS/Lambda"
+  metric_name         = "Errors"
+  dimensions          = { FunctionName = aws_lambda_function.bot.function_name }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alarms.arn]
+  ok_actions    = [aws_sns_topic.alarms.arn]
+
+  tags = local.tags
+}
+
+# The hourly check emits WebhookHealthy: 1 when the registered URL matches and
+# no delivery error was recorded, 0 otherwise. Two hours before firing, so one
+# missed scheduled invocation is not an alarm. Missing data is breaching,
+# because a check that stopped running is itself the failure.
+resource "aws_cloudwatch_metric_alarm" "bot_webhook_health" {
+  alarm_name          = "${local.name_prefix}-bot-webhook-health"
+  alarm_description   = "The Telegram webhook is gone or the token was revoked. Re-register it with the webhook script and confirm getWebhookInfo reports the stage URL."
+  namespace           = "YTDL/Bot"
+  metric_name         = "WebhookHealthy"
+  dimensions          = { Environment = var.environment }
+  statistic           = "Minimum"
+  period              = 3600
+  evaluation_periods  = 2
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
+
+  alarm_actions = [aws_sns_topic.alarms.arn]
+  ok_actions    = [aws_sns_topic.alarms.arn]
+
+  tags = local.tags
+}
+
 # AWS/Billing publishes EstimatedCharges a few times a day only, so a missing
 # datapoint must stay "insufficient data" rather than fire or silently clear.
 resource "aws_cloudwatch_metric_alarm" "billing_5_usd" {

@@ -42,3 +42,30 @@ output "ecr_repository_url" {
   description = "Repository receiving the -api and -worker image tags."
   value       = aws_ecr_repository.app.repository_url
 }
+
+# Telegram bot (feature 002): the Makefile and the quickstart read these, so no
+# name is hardcoded in a shell command.
+output "bot_api_base_url" {
+  description = "Base URL of the bot $default stage, before the /telegram prefix."
+  value       = aws_apigatewayv2_stage.bot.invoke_url
+}
+
+output "bot_webhook_url" {
+  description = "URL registered with Telegram; the value the health check compares."
+  value       = local.bot_webhook_url
+}
+
+output "bot_function_name" {
+  description = "Name of the bot Lambda function, for log and alarm lookups."
+  value       = aws_lambda_function.bot.function_name
+}
+
+output "telegram_token_parameter_name" {
+  description = "SSM SecureString parameter holding the Telegram bot token."
+  value       = aws_ssm_parameter.telegram_bot_token.name
+}
+
+output "job_events_topic_arn" {
+  description = "SNS topic the worker publishes terminal job events to."
+  value       = aws_sns_topic.job_events.arn
+}

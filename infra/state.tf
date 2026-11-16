@@ -8,6 +8,26 @@ resource "aws_dynamodb_table" "jobs" {
     type = "S"
   }
 
+  # Ownership of bot jobs, queried in creation order. The index is sparse: only
+  # items carrying owner_key are projected, so terminal jobs and rate windows
+  # cost nothing. Added in place, never by replacing the table (research D-05).
+  attribute {
+    name = "owner_key"
+    type = "S"
+  }
+
+  attribute {
+    name = "created_at"
+    type = "S"
+  }
+
+  global_secondary_index {
+    name            = "owner-created-index"
+    hash_key        = "owner_key"
+    range_key       = "created_at"
+    projection_type = "ALL"
+  }
+
   # Job records carry media_expires_at + 30 days; rate windows carry
   # window_start + 7200, so both self-clean without a sweeper function.
   ttl {

@@ -1,0 +1,8 @@
+# Only the configuration a remote run needs. State and local plans never leave
+# the machine, and the environment values are supplied by -var-file.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+.git/

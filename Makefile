@@ -23,7 +23,8 @@ export AWS_REGION
 
 .PHONY: help install image image-api image-worker test test-unit test-contract \
         test-e2e lint fmt verify-image tf-check bootstrap deploy destroy \
-        verify-destroy verify-retention verify-idempotency token outputs
+        verify-destroy verify-retention verify-idempotency token outputs \
+        bot-help-check bot-health bot-token
 
 help:
 	@echo "install              create app/.venv and install pinned dependencies"
@@ -39,6 +40,9 @@ help:
 	@echo "verify-destroy ENV=  prove nothing chargeable survives"
 	@echo "token ENV=dev        print the API bearer token"
 	@echo "outputs ENV=dev      re-init that backend and print its outputs"
+	@echo "bot-help-check       assert the help text against the contract"
+	@echo "bot-health ENV=dev   ask Telegram for the webhook registration"
+	@echo "bot-token ENV=dev    print the bot token parameter value"
 
 install:
 	$(PY) -m venv $(VENV)
@@ -158,6 +162,34 @@ token:
 	@aws ssm get-parameter \
 		--name "$$(terraform -chdir=infra output -raw token_parameter_name)" \
 		--with-decryption --query Parameter.Value --output text
+
+# The help text is the operator's, so the one test that compares it with
+# contracts/bot-commands.md is runnable on its own.
+bot-help-check:
+	cd app && ../$(VPY) -m pytest tests/unit/test_bot_help.py
+
+# Read-only: one getWebhookInfo call, no chat traffic. The token is read into a
+# shell variable and never written to a file or a log.
+bot-health:
+	@test -n "$(ENV)" || { echo "usage: make bot-health ENV=dev"; exit 1; }
+	@$(MAKE) -s outputs ENV=$(ENV) >/dev/null
+	@TOKEN=$$(aws ssm get-parameter --with-decryption --output text \
+		--query Parameter.Value \
+		--name "$$(terraform -chdir=infra output -raw telegram_token_parameter_name)"); \
+	curl -sS "https://api.telegram.org/bot$$TOKEN/getWebhookInfo" \
+	| python3 -c 'import json,sys; \
+data = json.load(sys.stdin); \
+info = data.get("result") or {}; \
+print("url                   " + str(info.get("url"))); \
+print("pending_update_count  " + str(info.get("pending_update_count"))); \
+print("max_connections       " + str(info.get("max_connections"))); \
+print("allowed_updates       " + str(info.get("allowed_updates")))'
+
+bot-token:
+	@test -n "$(ENV)" || { echo "usage: make bot-token ENV=dev"; exit 1; }
+	@$(MAKE) -s outputs ENV=$(ENV) >/dev/null
+	@aws ssm get-parameter --with-decryption --output text --query Parameter.Value \
+		--name "$$(terraform -chdir=infra output -raw telegram_token_parameter_name)"
 
 # The state bucket is deliberately outside the application lifecycle, so it is the
 # one name this check excludes. Everything else matching `ytdl-` must be gone.
