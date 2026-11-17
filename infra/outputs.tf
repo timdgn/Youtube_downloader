@@ -69,3 +69,8 @@ output "job_events_topic_arn" {
   description = "SNS topic the worker publishes terminal job events to."
   value       = aws_sns_topic.job_events.arn
 }
+
+output "pi_user_name" {
+  description = "IAM user the host deployment authenticates as; its access key is created out of band."
+  value       = aws_iam_user.pi.name
+}

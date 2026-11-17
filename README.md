@@ -1,11 +1,13 @@
 # YouTube Download Service
 
 A personal, single-operator service that takes a YouTube URL from your terminal or a
-Telegram chat, downloads the video in the background on AWS Lambda, stores one finished
+Telegram chat, downloads the video in the background, stores one finished
 file privately for seven days, and returns a download link valid for 60 minutes.
+The compute runs either on AWS Lambda or, in the production deployment, in Docker on a
+Raspberry Pi; media, job records, the queue and the secrets stay in AWS either way.
 
-Provisioning and removal are both Terraform. There is no console step, no server to
-patch, and no bucket to empty by hand.
+Provisioning and removal are both Terraform. There is no console step, no bucket to empty
+by hand.
 
 **Acceptable use.** This is a personal tool. Use it only for content you are entitled to
 download. It must not be used as a public service, to bypass DRM or paid access, or to
@@ -243,6 +245,26 @@ Design authority lives in `specs/001-youtube-video-download/`: `spec.md` for beh
 shapes, `.specify/memory/constitution.md` for the rules the project must follow.
 
 ---
+
+## Running on a Raspberry Pi
+
+The production stack runs its compute on one arm64 host in Docker while AWS keeps S3,
+DynamoDB, SQS and SSM. One image, two services: an HTTP front end (the terminal API, the
+Telegram webhook and the worker's terminal-event hook) and a queue consumer that
+downloads, remuxes and uploads.
+
+```bash
+make pi-ship IMAGE_TAG=<sha> PI_HOST=rasp   # build arm64, then docker load over SSH
+ssh rasp 'cd /opt/serveur && sudo docker compose up -d ytdl ytdl-worker'
+```
+
+The containers sit behind the host's Caddy on the loopback, and the existing Cloudflare
+tunnel publishes them as `https://ytdl.timcloud.fr`; no inbound port is opened. Terraform
+owns the AWS side: `worker_lambda_enabled = false` stops the Lambda mapping from competing
+for the same queue, `bot_public_url` points the webhook at the host, and the
+`ytdl-<env>-pi` IAM user holds the host's least privilege. The image is built on an arm64
+machine because the Pi runs it natively. Paths, update procedure, credential rotation,
+disk floor and failure modes are in `docs/runbook.md` section 12.
 
 ## Cost
 

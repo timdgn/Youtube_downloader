@@ -244,13 +244,17 @@ justified by arithmetic and monitored from billing data.
 
 ## 11. The Telegram bot
 
-The bot is a second front door, not a second service. It calls the same submission path,
-worker and presigner as the terminal API, and it adds one function behind its own HTTP
-API, one SNS topic the worker publishes terminal job events to, one hourly health check,
-and two alarms. It reads the token, the webhook secret and the allowlist from SSM in one
-call per webhook delivery and per health check, so no secret is an environment variable.
+The bot is a second front door, not a second service. In production it runs on the
+Raspberry Pi (section 12), not on Lambda: the HTTP front end answers the webhook, and the
+same image's worker service turns a terminal job into a chat message over the loopback.
+Reading section 12 first is the fast path when the bot is the thing that looks broken.
 
-Its logs are in `/aws/lambda/ytdl-<env>-bot`. Every webhook delivery writes one line with
+The bot calls the same submission path, worker and presigner as the terminal API. It reads
+the token, the webhook secret and the allowlist from SSM in one call per webhook delivery,
+so no secret is an environment variable.
+
+Its logs are in `/aws/lambda/ytdl-<env>-bot` on a Lambda deployment, and in
+`sudo docker logs ytdl` on the Raspberry Pi. Every webhook delivery writes one line with
 `event = "update"` and an `outcome`: `accepted`, `reissued`, `in_progress`,
 `rate_limited`, `refused`, `command:<name>`, `format_hint`, `duplicate`, `malformed`,
 `unauthenticated`, `ignored`, or `failed`. A delivery that failed internally also writes
@@ -410,3 +414,82 @@ curl -s "https://api.telegram.org/bot$TG_TOKEN/getWebhookInfo" | python3 -m json
 Expected: `"url": ""`. A non-empty URL means a registration survived, and the teardown is not
 complete. If the deregistration step fails, the destroy stops on that provisioner rather
 than finishing quietly.
+
+## 12. Running on the Raspberry Pi
+
+Production compute runs on `rasp`, a Raspberry Pi 4 (2 GB, Debian 13, arm64) behind the
+existing Cloudflare tunnel. AWS keeps the state: S3 for media, DynamoDB for jobs, SQS for
+the queue, SSM for every secret. Nothing is reimplemented, the same handlers run in one
+Docker image with two roles.
+
+| Piece | Where | Notes |
+|---|---|---|
+| HTTP front end (`/v1/*`, `/telegram/webhook`, `/internal/job-event`) | Pi, container `ytdl` | `127.0.0.1:8090`; Caddy block `http://ytdl.timcloud.fr`, TLS terminated at the Cloudflare edge |
+| Queue consumer | Pi, container `ytdl-worker` | same image, polls the queue one message at a time |
+| Media, jobs, queue, secrets | AWS | unchanged |
+| API Gateway, bot Lambda, worker Lambda, SNS topic | deployed, dormant | `worker_lambda_enabled = false` removed the event source mapping; `bot_public_url` moved the webhook to the Pi |
+
+The hourly health rule still invokes the (otherwise idle) bot Lambda. Its environment now
+carries the Pi's webhook URL, so `ytdl-prod-bot-webhook-health` remains a real check on the
+Pi's registration. `ytdl-prod-bot-errors`, `ytdl-prod-api-5xx` and the two Lambda worker
+alarms watch functions that no longer receive traffic: ignore them until the Lambda side is
+removed. `ytdl-prod-dlq-not-empty` is still meaningful, because the Pi worker uses the same
+queue.
+
+**Paths on `rasp`.**
+
+| Path | Contents |
+|---|---|
+| `/opt/serveur/compose.yaml` | services `ytdl` and `ytdl-worker`, in the `Serveur` stack |
+| `/opt/serveur/ytdl/env` | every setting plus the IAM key, mode `600`, owner `tim` |
+| `/mnt/jellyfin_medias/ytdl-scratch` | the worker's scratch space, on the USB disk, never the SD card |
+| `/var/log/caddy/ytdl.log` | one JSON line per request, rotated at 10 MiB, five kept |
+| `sudo docker logs ytdl` / `ytdl-worker` | the application's own structured lines |
+
+**Deploy an update.** The image is built on an arm64 machine and travels as a stream: there
+is no registry in the path.
+
+```bash
+make pi-ship IMAGE_TAG=<sha>            # build, then docker load on rasp
+# set `image: ytdl-pi:<sha>` on both services of /opt/serveur/compose.yaml
+ssh rasp 'cd /opt/serveur && sudo docker compose up -d ytdl ytdl-worker'
+```
+
+`docker compose up -d` replaces only a container whose image tag changed, so a tag that does
+not change deploys nothing. The `ytdl` healthcheck calls `/healthz` every 30 s; `ytdl-worker`
+has a 17-minute `stop_grace_period`, which lets a running job finish on `docker stop` before
+SIGKILL. A job killed anyway is redelivered after the queue's 960 s visibility timeout, and
+`claim_job` plus the completion pre-check make the retry safe.
+
+**Credentials.** The Pi authenticates as IAM user `ytdl-prod-pi`, whose policy is the union
+of what the three Lambda roles could do. The access key is created out of band on purpose:
+a Terraform-managed key would sit in the state file. To rotate:
+
+```bash
+aws iam create-access-key --user-name ytdl-prod-pi      # write the pair straight to the host
+ssh rasp 'sudo -e /opt/serveur/ytdl/env'                # replace the two AWS_* lines
+ssh rasp 'cd /opt/serveur && sudo docker compose up -d --force-recreate ytdl ytdl-worker'
+aws iam delete-access-key --user-name ytdl-prod-pi --access-key-id <old id>
+```
+
+**Disk is the binding constraint.** The SD card is 15 GB and the image is 874 MB. Jellyfin
+refuses to start below 2 GiB free on `/`, and `serveur-update.sh` refuses to run below
+2.25 GiB. After the deployment the host had 2.5 GiB free, and that headroom was bought by
+moving a stale 1 GB `/var/swap` (a sparse leftover; zram is the active swap) and 600 MB of
+old Warp remote-server binaries to `/mnt/jellyfin_medias/agent_backup/`. Before adding
+another image, run `df -h /` and `sudo docker system df`; never `docker system prune -a`
+blindly, it removes the rollback images the update script relies on.
+
+**Failure modes.**
+
+| Symptom | Check |
+|---|---|
+| Telegram gets no answer | `make bot-health ENV=prod`; `sudo docker compose ps ytdl`; `sudo docker logs ytdl --tail 50` |
+| Webhook answers 500 | The log line carries `event = "request_failed"` and a class name; the body and headers are never logged. The alarm does not see these (the handler answers instead of raising) |
+| A submission is accepted but never completes | `sudo docker logs ytdl-worker`, then the queue's visible count and the DLQ; a job whose `state` stays `processing` past 15 minutes is the sign of a dead worker |
+| `NoSuchEntity`/`SignatureDoesNotMatch` on every request | The IAM key in the env file was rotated or deleted |
+| Every chat message is refused | The allowlist parameter changed, or the message came from an account not on it |
+
+**Do not** point the webhook at API Gateway again while `worker_lambda_enabled = false`;
+that combination accepts jobs nobody consumes. The supported switch back is: set
+`bot_public_url = ""`, set `worker_lambda_enabled = true`, apply, and stop the Pi services.

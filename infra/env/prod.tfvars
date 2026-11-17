@@ -22,6 +22,13 @@ worker_ephemeral_storage_mb = 10240
 
 alarm_email = ""
 
+# Compute runs on the Raspberry Pi: the host polls the job queue with its own
+# credentials, so the Lambda event source mapping must stay off or the two
+# consumers would race for the same message. bot_public_url is set once the host
+# answers HTTPS; empty keeps the API Gateway webhook.
+worker_lambda_enabled = false
+bot_public_url        = "https://ytdl.timcloud.fr"
+
 ytdlp_cookies_s3_uri = ""
 ytdlp_proxy_param    = ""
 ytdlp_player_client  = ""

@@ -277,6 +277,10 @@ resource "aws_lambda_function" "worker" {
 }
 
 resource "aws_lambda_event_source_mapping" "worker" {
+  # The host deployment polls the same queue with its own credentials, so both
+  # consumers must never run at once: two pollers would race for one message.
+  count = var.worker_lambda_enabled ? 1 : 0
+
   event_source_arn = aws_sqs_queue.jobs.arn
   function_name    = aws_lambda_function.worker.arn
 

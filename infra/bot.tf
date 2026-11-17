@@ -5,8 +5,8 @@
 locals {
   # A $default stage's invoke_url can carry a trailing slash, so trim it before
   # the join: one slash in the registered URL is what Telegram, the health check
-  # and the tutorial all state.
-  bot_webhook_url = "${trimsuffix(aws_apigatewayv2_stage.bot.invoke_url, "/")}/telegram/webhook"
+  # and the tutorial all state. A host outside AWS replaces the whole prefix.
+  bot_webhook_url = var.bot_public_url != "" ? "${var.bot_public_url}/telegram/webhook" : "${trimsuffix(aws_apigatewayv2_stage.bot.invoke_url, "/")}/telegram/webhook"
 }
 
 resource "aws_cloudwatch_log_group" "bot_access" {

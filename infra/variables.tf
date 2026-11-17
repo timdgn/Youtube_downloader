@@ -118,6 +118,23 @@ variable "worker_ephemeral_storage_mb" {
   }
 }
 
+variable "worker_lambda_enabled" {
+  description = "Whether the Lambda event source mapping consumes the job queue. False when a host outside AWS polls it."
+  type        = bool
+  default     = true
+}
+
+variable "bot_public_url" {
+  description = "Public base URL the bot is served from. Empty keeps the API Gateway stage."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.bot_public_url == "" || can(regex("^https://[a-z0-9.-]+$", var.bot_public_url))
+    error_message = "bot_public_url must be empty or an https origin with no path, for example https://bot.example.com."
+  }
+}
+
 variable "alarm_email" {
   description = "Optional email address subscribed to the alarm topic. Empty means no subscription."
   type        = string

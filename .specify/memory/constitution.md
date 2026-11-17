@@ -1,17 +1,24 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 1.0.0 -> 1.1.0
-Rationale: the first live validation treated the monthly cost ceiling as something
-to exercise. A ceiling reached in order to test it has already been breached, so
-principle V now states that ceilings are guardrails, never test targets.
+Version change: 1.1.0 -> 2.0.0
+Rationale: production compute moved to a single Linux host running Docker (a
+Raspberry Pi) while AWS keeps media, job records, the queue and the secrets.
+Two principles assumed Lambda-only compute and an execution-role credential:
+II (serverless within Lambda's limits) and III (no long-lived credential outside
+an execution role). Both are redefined rather than silently contradicted. The
+dev-before-prod gate is given a definition for a target that has no dev twin.
 
-Modified principles: V (one bullet added: ceilings are not test targets)
-Added sections: none
+Modified principles: II (compute is a stateless container with declared limits;
+Lambda is one supported target), III (a scoped host user is permitted under
+stated controls)
+Added sections: Deployment Targets
 Removed sections: none
-Deferred items: none
+Deferred items: deleting the dormant Lambda functions and API Gateway once the
+host target has completed one full media-retention cycle in production.
 
-History: 1.0.0 was the initial ratification on 2026-11-15.
+History: 1.0.0 initial ratification on 2026-11-15; 1.1.0 made cost ceilings
+guardrails rather than test targets; 2.0.0 added the host deployment target.
 -->
 
 # YouTube Download Service Constitution
@@ -34,33 +41,42 @@ actions in the console are limited to read-only inspection.
   different variables. Environment-specific logic MUST NOT be branched in code.
 - `terraform destroy` on an environment MUST remove the whole environment. A
   resource that survives destroy is a defect.
+- IAM access keys are the one exception, and only because Terraform would store
+  the secret in state: the user and its policy are declared in Terraform, and
+  the key itself is created by the documented CLI procedure in the runbook, held
+  only on the host, and rotated there.
 
 **Rationale**: the infrastructure is the product's only durable asset. Anything
 outside Terraform is invisible to review, unreproducible, and impossible to
 restore after an incident.
 
-### II. Serverless Within Lambda's Hard Limits
+### II. Stateless Compute Within Declared Limits
 
-The service runs on AWS Lambda. AWS limits are design inputs, not problems to
-discover in production.
+The service's compute is a container image built from this repository. Two
+targets are supported and both keep the same contract: AWS Lambda, the default
+for an AWS-only account, and a single Linux host running Docker. Production runs
+on the host.
 
-- Lambda's 15-minute execution ceiling, its `/tmp` ceiling, and its 6 MB
-  synchronous response limit are treated as fixed. Video bytes MUST NEVER be
-  returned in an HTTP response body.
+- Video bytes MUST NEVER be returned in an HTTP response body.
 - The pipeline is: validated request -> asynchronous job -> media written to S3
   -> short-lived presigned URL returned to the caller. The download client is
-  never proxied through the function.
+  never proxied through the process that accepted the request.
 - Work that can exceed a single invocation is split into explicit stages, and
   each stage is idempotent and keyed by a job identifier, so retries never
   duplicate output.
 - Runtime dependencies (media extraction tool, media muxer/encoder) are
   vendored inside a container image with exact pinned versions. A silent
   dependency upgrade that breaks extraction is a production outage.
-- Timeouts, memory, and reserved concurrency are declared per function, sized
-  from observed data, and never left at defaults by accident.
+- Every execution limit is declared and sized from observed data: Lambda's
+  15-minute, `/tmp` and 6 MB response ceilings where Lambda runs the code, and
+  the pipeline deadline plus the queue's visibility timeout where a host runs it.
+- A host target MUST expose the same routes and the same queue contract as the
+  Lambda target, so switching targets changes where the bytes are processed and
+  nothing about behaviour.
 
-**Rationale**: the Lambda execution model is the constraint that shapes the whole
-architecture. Ignoring it produces a design that works only on small test clips.
+**Rationale**: the execution model is the constraint that shapes the whole
+architecture. It used to be Lambda's alone; it is now a property of the target,
+and every target states its ceilings instead of discovering them in production.
 
 ### III. Least Privilege, No Public Exposure
 
@@ -69,8 +85,12 @@ architecture. Ignoring it produces a design that works only on small test clips.
 - S3 Block Public Access is enabled on every bucket. Objects are reachable only
   through presigned URLs with an expiry of one hour or less.
 - Long-lived AWS credentials never appear in code, images, environment
-  variables, or logs. Compute identity comes from the execution role; third-party
-  secrets come from SSM Parameter Store or Secrets Manager.
+  variables, or logs. On Lambda, compute identity comes from the execution role.
+  On a host without instance metadata, a dedicated IAM user whose policy is no
+  broader than the roles it replaces is permitted; its key lives only in a
+  mode-0600 file owned by the service account, is never committed, logged or
+  baked into an image, and is rotated by the procedure in the runbook.
+  Third-party secrets come from SSM Parameter Store or Secrets Manager.
 - All data at rest is encrypted with customer-managed or AWS-managed keys, and
   buckets have a lifecycle rule that expires artefacts automatically.
 - Every resource carries `Project` and `Environment` tags, so cost and ownership
@@ -84,11 +104,11 @@ turn a utility project into a data-loss and cost incident.
 - Pure logic (URL validation and normalisation, format/quality selection, S3 key
   derivation, job state transitions) is unit tested before implementation. A
   failing test precedes each behaviour.
-- Every Lambda handler has a contract test driven by a synthetic event and a
+- Every entry point has a contract test driven by a synthetic event and a
   stubbed AWS client. No test reaches the real YouTube or real AWS.
 - The default test suite runs offline and deterministically. Network-dependent
   verification lives in a separate, explicitly invoked end-to-end check against
-  a deployed dev stack.
+  a deployed stack.
 - Input validation is a tested boundary, not a convenience: non-YouTube hosts,
   malformed IDs, playlist URLs, live streams, and over-long videos are rejected
   with a defined error, before any download starts.
@@ -100,9 +120,9 @@ are the only way to tell "our bug" from "upstream changed".
 
 - Structured JSON logs, one line per event, correlated by job identifier. No
   account identifiers, tokens, or full URLs-with-parameters in logs.
-- Alarms exist before launch on: function errors, throttles, p95 duration
-  approaching the timeout, DLQ depth, and estimated spend. Every alarm has a
-  named response action.
+- Alarms exist before launch on: errors, throttles, duration approaching the
+  deadline, DLQ depth, and estimated spend. Every alarm has a named response
+  action.
 - The API is rate limited and concurrency capped, so a single caller cannot
   exhaust the account's limits or budget.
 - Cost ceilings are explicit: a maximum permitted video duration/resolution, an
@@ -122,11 +142,11 @@ guards and alarms the first symptom is the bill.
 
 ## Technical & Legal Constraints
 
-**Platform baseline**: AWS Lambda deployed exclusively through Terraform.
-Functions are packaged as container images (media tooling and its native
-dependencies exceed practical zip limits). Recommended: Python 3.12, `yt-dlp`
-pinned to an exact version, and a static `ffmpeg` build, all versioned in the
-repository and rebuilt only through a reviewed change.
+**Platform baseline**: a container image built from one Dockerfile, deployed
+either as AWS Lambda functions through Terraform or as Docker services on a
+Linux host. Python 3.12 or newer, `yt-dlp` pinned to an exact version and a
+static `ffmpeg` build, all versioned in the repository and rebuilt only through
+a reviewed change.
 
 **Interface**: a single entry point accepts a YouTube URL and optional quality
 preference. It validates, enqueues, and returns a job handle immediately. A
@@ -149,6 +169,29 @@ eliminated by code.
 licence is recorded in the repository, and the container image is not
 redistributed outside this project without review.
 
+## Deployment Targets
+
+**Lambda.** Terraform declares every function, role, queue, bucket and alarm.
+Images are immutable and tagged with the commit that produced them.
+
+**Host (Docker).** One image, two services: an HTTP front end serving the
+terminal API, the Telegram webhook and the worker's terminal-event hook, and a
+queue consumer running the same pipeline.
+
+- AWS keeps media, job records, the queue and secrets. The host holds no durable
+  state except its scratch directory, which lives on a disk that is not the boot
+  device when one exists.
+- The queue has exactly ONE consumer. A Lambda event source mapping and a host
+  poller MUST NOT both be enabled; the Terraform switch that decides this is the
+  only supported way to move it.
+- The host is reachable only through the reverse proxy and tunnel already on the
+  machine; no inbound port is opened for this service.
+- The image tag names the commit it was built from. Rollback is reloading the
+  previous tag and recreating the containers.
+- The host's free disk space is an operational constraint with an alarm-free
+  guard: the deployment records the floor below which an existing service on
+  the machine refuses to start, and keeps headroom above it.
+
 ## Development Workflow & Quality Gates
 
 - Work proceeds spec -> plan -> tasks -> implementation. Implementation does not
@@ -157,10 +200,14 @@ redistributed outside this project without review.
 - Each change states which principles it touches and how it complies. A change
   that violates a principle is either rewritten or recorded as an explicit
   amendment with justification.
-- Deployment order is always dev first, then prod. A prod apply requires a dev
-  apply of the same commit to have succeeded.
-- Rollback is re-applying the previously deployed image tag, not a hotfix
-  applied by hand. Image tags are immutable; `latest` is never deployed.
+- Deployment order is dev first, then prod, for every target that has both
+  environments. A prod apply requires a dev apply of the same commit to have
+  succeeded. A single-instance target with no dev twin (the host deployment)
+  instead requires a live end-to-end verification of every route after
+  deployment, plus a documented rollback to the previous image tag; the absence
+  of a dev twin is stated in the change.
+- Rollback is re-applying or reloading the previously deployed image tag, not a
+  hotfix applied by hand. Image tags are immutable; `latest` is never deployed.
 - Infrastructure changes and application changes ship in separate commits so a
   failure is attributable.
 - Documentation is part of "done": the endpoint contract, the environment
@@ -188,4 +235,4 @@ principle or a stated requirement is removed rather than justified.
 present) must not contradict this document; conflicts are resolved in favour of
 this constitution.
 
-**Version**: 1.1.0 | **Ratified**: 2026-11-15 | **Last Amended**: 2026-11-16
+**Version**: 2.0.0 | **Ratified**: 2026-11-15 | **Last Amended**: 2026-11-17

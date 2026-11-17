@@ -47,8 +47,8 @@ export TF_VAR_telegram_bot_token="$(cat ~/.config/ytdl/telegram-bot-token)"
 ```
 
 The token is never written to a file in this repository, never becomes an
-environment variable on a Lambda function, and never appears in a log line. The
-bot reads it from SSM on every message.
+environment variable, and never appears in a log line. The bot reads it from SSM
+on every message.
 
 ---
 
@@ -97,11 +97,14 @@ make bot-health ENV=prod
 Expected, and worth reading before you write anything in the chat:
 
 ```text
-url                   https://<api-id>.execute-api.eu-west-3.amazonaws.com/telegram/webhook
+url                   https://ytdl.timcloud.fr/telegram/webhook
 pending_update_count  0
 max_connections       5
 allowed_updates       ['message']
 ```
+
+On a Lambda deployment the same line shows the API Gateway stage instead. Either way, what
+matters is that the URL equals `terraform -chdir=infra output -raw bot_webhook_url`.
 
 A non-empty `last_error_message` means Telegram cannot deliver to that address.
 
@@ -349,7 +352,7 @@ refusal contains no command list and no hint that downloads are possible.
 | The bot never answers | `make bot-health ENV=prod`. An empty `url` means the registration is gone; a recent `last_error_message` means Telegram cannot deliver |
 | Every message is refused | Your id is not on the allowlist, or the list was written for another environment |
 | The bot answered before and stopped | The token may be revoked: `make bot-health` reports `401` from Telegram |
-| A download never completes | `youtube` refused the Lambda address, or the job hit a cap. `/info` shows the limits; the runbook has the failure table |
+| A download never completes | `youtube` refused the host's address, or the job hit a cap. `/info` shows the limits; the runbook has the failure table |
 
 The operational detail, including the two alarms and their named responses, is in
 `docs/runbook.md` section 11.

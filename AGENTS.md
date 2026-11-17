@@ -1,6 +1,6 @@
 # Project Instructions
 
-This repository is governed by `.specify/memory/constitution.md` (v1.1.0). If an
+This repository is governed by `.specify/memory/constitution.md` (v2.0.0). If an
 instruction here conflicts with the constitution, the constitution wins.
 
 ## Cost ceilings are guardrails
@@ -13,6 +13,10 @@ one job it had. This is constitution principle V, and it applies to tests, drill
 
 ## Environment facts that are easy to get wrong
 
+- Production compute runs on `rasp` in Docker (`ytdl` and `ytdl-worker` in
+  `/opt/serveur/compose.yaml`); AWS keeps S3, DynamoDB, SQS and SSM. While the host
+  polls the queue, `worker_lambda_enabled` must stay `false`: a second consumer would
+  race for the same message. `docs/runbook.md` section 12 is the operator view.
 - All resources run in `eu-west-3` (Paris). The two budget alarms are the only exception,
   and they live in `us-east-1` with their own SNS topic, because a CloudWatch alarm can
   only act on a topic in its own region.

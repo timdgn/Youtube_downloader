@@ -12,6 +12,8 @@ VENV      := app/.venv
 VPY       := $(VENV)/bin/python
 IMAGE_TAG ?= $(shell git rev-parse --short=12 HEAD 2>/dev/null || date -u +%Y%m%d%H%M%S)
 LOCAL_IMG ?= ytdl-local
+PI_IMG    ?= ytdl-pi
+PI_HOST   ?= rasp
 ENV       ?=
 STATE_BUCKET_PREFIX ?= ytdl-tfstate
 
@@ -21,7 +23,7 @@ STATE_BUCKET_PREFIX ?= ytdl-tfstate
 AWS_REGION ?= eu-west-3
 export AWS_REGION
 
-.PHONY: help install image image-api image-worker test test-unit test-contract \
+.PHONY: help install image image-api image-worker pi-image pi-ship test test-unit test-contract \
         test-e2e lint fmt verify-image tf-check bootstrap deploy destroy \
         verify-destroy verify-retention verify-idempotency token outputs \
         bot-help-check bot-health bot-token
@@ -29,6 +31,8 @@ export AWS_REGION
 help:
 	@echo "install              create app/.venv and install pinned dependencies"
 	@echo "image                build both arm64 images tagged $(IMAGE_TAG)"
+	@echo "pi-image             build the Docker host image tagged $(PI_IMG):$(IMAGE_TAG)"
+	@echo "pi-ship              build it and load it on $(PI_HOST) over SSH"
 	@echo "test                 unit and contract suites (offline, deterministic)"
 	@echo "test-e2e             opt-in suite against a deployed stack"
 	@echo "lint                 ruff check and format check"
@@ -58,6 +62,15 @@ image-api:
 image-worker:
 	docker buildx build --platform linux/arm64 --provenance=false --sbom=false --target worker \
 		-t $(LOCAL_IMG):$(IMAGE_TAG)-worker --load app
+
+# The Docker host deployment: one image, both roles, built for the Pi's arm64.
+pi-image:
+	docker buildx build --platform linux/arm64 --provenance=false --sbom=false \
+		-f app/Dockerfile.pi -t $(PI_IMG):$(IMAGE_TAG) --load app
+
+# No registry: the image travels as a stream. Loading is idempotent per tag.
+pi-ship: pi-image
+	docker save $(PI_IMG):$(IMAGE_TAG) | gzip -1 | ssh $(PI_HOST) 'gunzip | sudo docker load'
 
 test: test-unit test-contract
 
