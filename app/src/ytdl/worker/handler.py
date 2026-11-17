@@ -12,6 +12,7 @@ import os
 import shutil
 import tempfile
 import time
+import urllib.request
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -23,6 +24,7 @@ from ytdl import errors, keys, quality, states
 from ytdl.adapters.dynamo import DynamoRepository
 from ytdl.adapters.extractor import ExtractionError, Extractor
 from ytdl.adapters.s3 import MediaStore, s3_client
+from ytdl.auth import TokenProvider
 from ytdl.config import Config, load_config
 from ytdl.formats import NoUsableFormat
 from ytdl.logging import StructuredLogger, get_logger
@@ -240,11 +242,11 @@ def handler(event: dict[str, Any], context: object = None) -> dict[str, list[dic
     """Lambda entry point: build the dependencies once per cold start, then handle."""
     global _WORKER
     if _WORKER is None:
-        _WORKER = _build_worker()
+        _WORKER = build_worker()
     return _WORKER.handle(event)
 
 
-def _build_worker() -> Worker:
+def build_worker() -> Worker:
     config = load_config()
     logger = get_logger(FUNCTION_NAME)
     store = MediaStore(s3_client(), config.media_bucket)
@@ -264,7 +266,14 @@ def _build_worker() -> Worker:
 
 
 def _job_publisher(config: Config) -> Callable[[str, str], None] | None:
-    """Build the SNS publisher once per cold start, or None when unconfigured."""
+    """Build the terminal-event publisher once per cold start, or None when unconfigured.
+
+    Two transports exist because two deployments exist: Lambda publishes to SNS,
+    the Docker deployment posts to the bot over the loopback.
+    """
+    if config.job_events_url:
+        return _http_publisher(config)
+
     topic_arn = config.job_events_topic_arn
     if not topic_arn:
         return None
@@ -276,6 +285,31 @@ def _job_publisher(config: Config) -> Callable[[str, str], None] | None:
             TopicArn=topic_arn,
             Message=json.dumps(body, separators=(",", ":")),
         )
+
+    return publish
+
+
+def _http_publisher(config: Config) -> Callable[[str, str], None]:
+    """Post one event to the bot, authenticated with the API token."""
+    tokens = TokenProvider(config.token_param_name, boto3.client("ssm"))
+    url = str(config.job_events_url)
+
+    def publish(event: str, job_id: str) -> None:
+        body = json.dumps(
+            {"version": SUPPORTED_VERSION, "event": event, "job_id": job_id},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        request = urllib.request.Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {tokens.get()}",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            response.read()
 
     return publish
 
@@ -448,7 +482,8 @@ def _attempt(job: dict[str, Any]) -> int:
 
 
 def _default_workdir() -> str:
-    return tempfile.mkdtemp(dir="/tmp")
+    """A scratch directory under the mount the deployment gives us, or /tmp."""
+    return tempfile.mkdtemp(dir=os.environ.get("YTDL_WORK_DIR", "/tmp"))
 
 
 def _now_epoch() -> int:

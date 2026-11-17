@@ -265,17 +265,17 @@ def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Lambda entry point; the dependencies are built once per cold start."""
     global _api
     if _api is None:
-        _api = _build()
+        _api = build_api()
     return _api.handle(event)
 
 
-def _build() -> Api:
+def build_api(tokens: TokenProvider | None = None) -> Api:
     config = load_config()
     return Api(
         repo=DynamoRepository(boto3.client("dynamodb"), config.table_name),
         queue=JobQueue(boto3.client("sqs"), config.queue_url),
         store=MediaStore(s3_client(), config.media_bucket),
-        tokens=TokenProvider(config.token_param_name, boto3.client("ssm")),
+        tokens=tokens or TokenProvider(config.token_param_name, boto3.client("ssm")),
         config=config,
     )
 

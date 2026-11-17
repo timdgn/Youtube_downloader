@@ -615,14 +615,14 @@ def handler(event: dict[str, Any], context: object = None) -> dict[str, Any]:
     """Lambda entry point; the dependencies are built once per cold start."""
     global _BOT
     if _BOT is None:
-        _BOT = _build()
+        _BOT = build_bot()
     return _BOT.handle(event)
 
 
 _BOT: Bot | None = None
 
 
-def _build() -> Bot:
+def build_bot() -> Bot:
     config = require_bot_config(load_config())
     return Bot(
         repo=DynamoRepository(boto3.client("dynamodb"), config.table_name),

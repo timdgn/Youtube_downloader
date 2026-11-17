@@ -65,6 +65,7 @@ class Config:
     telegram_default_tier: str = DEFAULT_TELEGRAM_TIER
     telegram_test_video_id: str | None = None
     job_events_topic_arn: str | None = None
+    job_events_url: str | None = None
     ytdlp_version: str | None = None
     worker_ephemeral_storage_mb: int = DEFAULT_WORKER_EPHEMERAL_STORAGE_MB
 
@@ -99,6 +100,7 @@ def load_config(env: Mapping[str, str] | None = None) -> Config:
         telegram_default_tier=_tier(source),
         telegram_test_video_id=_optional(source, "TELEGRAM_TEST_VIDEO_ID"),
         job_events_topic_arn=_optional(source, "JOB_EVENTS_TOPIC_ARN"),
+        job_events_url=_optional(source, "JOB_EVENTS_URL"),
         ytdlp_version=_optional(source, "YTDLP_VERSION"),
         worker_ephemeral_storage_mb=_integer(
             source, "WORKER_EPHEMERAL_STORAGE_MB", DEFAULT_WORKER_EPHEMERAL_STORAGE_MB

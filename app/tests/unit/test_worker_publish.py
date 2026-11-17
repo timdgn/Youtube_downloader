@@ -297,6 +297,18 @@ def test_the_publisher_is_absent_without_a_topic() -> None:
     assert handler._job_publisher(CONFIG) is None
 
 
+def test_a_configured_url_wins_over_the_topic(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = replace(
+        CONFIG,
+        job_events_topic_arn=TOPIC_ARN,
+        job_events_url="http://ytdl:8090/internal/job-event",
+    )
+    monkeypatch.setattr(handler.boto3, "client", lambda name: object())
+    monkeypatch.setattr(handler, "TokenProvider", lambda *args, **kwargs: object())
+
+    assert callable(handler._job_publisher(config))
+
+
 def test_build_worker_wires_the_configured_topic(monkeypatch: pytest.MonkeyPatch) -> None:
     sns = _RecordingSns()
     config = replace(CONFIG, job_events_topic_arn=TOPIC_ARN)
@@ -308,7 +320,7 @@ def test_build_worker_wires_the_configured_topic(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(handler, "s3_client", lambda: object())
     monkeypatch.setattr(handler.boto3, "client", lambda name: _sns_client(name, sns))
 
-    worker = handler._build_worker()
+    worker = handler.build_worker()
     assert worker._publish is not None
     worker._publish("job_failed", JOB_ID)
 
@@ -331,4 +343,4 @@ def test_build_worker_passes_no_publisher_without_a_topic(
     monkeypatch.setattr(handler, "s3_client", lambda: object())
     monkeypatch.setattr(handler.boto3, "client", lambda name: object())
 
-    assert handler._build_worker()._publish is None
+    assert handler.build_worker()._publish is None
