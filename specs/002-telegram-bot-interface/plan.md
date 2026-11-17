@@ -4,8 +4,20 @@
 
 **Input**: Feature specification from `specs/002-telegram-bot-interface/spec.md`
 
-**Status**: planned. Phase 0 and Phase 1 artifacts are complete. Implementation has not
-started; `tasks.md` is the next command's output.
+**Status**: implemented, deployed and verified on 2026-11-16. Since 2026-11-17 the bot
+runs on the host compute target (001 research D-20): the webhook is served by the host's
+HTTP front end and terminal job events reach it over the container network instead of
+SNS. The Lambda design below is the Lambda target and is kept as it was built.
+
+> **Amendment 2026-11-17: host deployment.** The webhook URL is now the public origin
+> (`https://ytdl.timcloud.fr/telegram/webhook`), registered by Terraform through the same
+> `terraform_data` resource, driven by `bot_public_url`. The `bot` Lambda and its API
+> Gateway stage remain deployed but receive no updates. The worker-to-bot event keeps its
+> JSON body and moves from SNS to an authenticated `POST /internal/job-event` on the
+> container network; the worker still never holds the bot token. The hourly health check
+> still runs on the (otherwise idle) Lambda and now compares the host's URL, so
+> `ytdl-prod-bot-webhook-health` remains meaningful. `ytdl-prod-bot-errors` was deleted
+> with the other dormant-metric alarms. No command, sentence or ownership rule changed.
 
 **Note**: Filled in by `/speckit.plan`. The design extends the deployed `001` stack
 rather than replacing any part of it.

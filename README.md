@@ -154,7 +154,7 @@ Every failure carries one of five categories and a `retryable` flag.
 | `internal_error` | yes | Storage, deadline, unexpected exception |
 
 `docs/runbook.md` has the cause and next action for each, the alarm responses, and the
-workaround for YouTube refusing Lambda's egress address.
+workaround for YouTube refusing the egress address.
 
 ---
 
@@ -240,6 +240,10 @@ terminal -> HTTP API -> api Lambda (validate, rate limit, enqueue)
 - Media is private, encrypted with SSE-S3, and expires after 7 days. Only presigned URLs
   reach it.
 
+Production substitutes the host's two Docker services (see above) for the `api`, `worker`
+and `bot` functions; the queue, the table, the bucket, the presigner and both entry points
+are identical. The diagram is the Lambda target, and it is what `dev` deploys.
+
 Design authority lives in `specs/001-youtube-video-download/`: `spec.md` for behaviour,
 `plan.md` and `research.md` for the decisions, `contracts/` for the exact API and queue
 shapes, `.specify/memory/constitution.md` for the rules the project must follow.
@@ -284,7 +288,9 @@ reached on purpose (constitution principle V).
 ## Known limitation
 
 YouTube scores datacenter IP ranges badly, and Lambda egress addresses are datacenter
-ranges. A video may be refused with a bot check even though it plays fine in your browser.
-The service reports this honestly as a non-retryable `upstream_problem`; the remedy is
+ranges. The production host's residential address fares better but is shared with every
+service behind the same connection, and a CGNAT pool can be scored like a datacenter. A
+video may be refused with a bot check even though it plays fine in your browser. The
+service reports this honestly as a non-retryable `upstream_problem`; the remedy is
 configuration, not code. `docs/runbook.md` section 6 covers the three options: a cookies
 file, a residential proxy, or a player-client override.

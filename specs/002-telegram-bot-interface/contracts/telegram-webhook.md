@@ -9,6 +9,10 @@
 The webhook is the only inbound path. Nothing in this service calls `getUpdates`, and a
 webhook and a poll cannot coexist for one bot.
 
+> **Deployment note (2026-11-17).** On the host target the consumer is the `ytdl` web
+> service and the route keeps the same path on the public origin. The secret header, the
+> body shape, the status codes and the token read from SSM are unchanged.
+
 ---
 
 ## Request

@@ -4,9 +4,21 @@
 
 **Input**: Feature specification from `specs/001-youtube-video-download/spec.md`
 
-**Status**: implemented and verified on 2026-11-16. Dev is live in `eu-west-3` (Paris);
-see `tasks.md` for the final task state and `checklists/requirements.md` for the
-verification record. The only open item is the cost-ceiling drill (T101).
+**Status**: implemented and verified on 2026-11-16, then moved to a host target on
+2026-11-17. Production compute runs in Docker on a Raspberry Pi; AWS keeps S3, DynamoDB,
+SQS and SSM. The Lambda design below is the Lambda target and is kept as it was built.
+`docs/runbook.md` section 12 is the operator truth for production.
+
+> **Amendment 2026-11-17: host compute target.** The same container image now runs as
+> two Docker services on a Linux host: an HTTP front end serving the three API routes and
+> the Telegram webhook, and an SQS consumer running the worker pipeline. The queue keeps
+> exactly one consumer: the Lambda event source mapping is disabled by
+> `worker_lambda_enabled = false`. The API Gateway stage and the three functions remain
+> deployed but receive no traffic; the five alarms built on their metrics were deleted
+> the same day. Constitution amendment 2.0.0 records the principle changes (compute is a
+> stateless container with declared limits, and a scoped host IAM user is allowed where
+> there is no instance role). Nothing in this plan's behaviour, contracts or data model
+> changed; only the place the bytes are processed.
 
 **Note**: Filled in by `/speckit.plan`. Phase 0 and Phase 1 artifacts are generated
 alongside this file.

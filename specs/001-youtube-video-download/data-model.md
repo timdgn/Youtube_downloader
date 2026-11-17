@@ -218,6 +218,13 @@ The deployment unit. All of it is Terraform variables; none of it is code branch
 
 Every resource carries `Project` and `Environment` tags (constitution principle III).
 
+**Host deployment (2026-11-17).** The four `worker_*` sizing rows describe the Lambda
+worker. On the host target the consumer is a Docker service sized by the machine itself:
+one job at a time, a 17-minute stop grace period so a job can finish, and scratch space
+on a separate disk. The queue's 960-second visibility timeout still bounds redelivery.
+`alarm_email` behaves the same everywhere: empty means no subscription exists, so no
+alarm is delivered.
+
 ---
 
 ## Invariants

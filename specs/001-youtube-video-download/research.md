@@ -597,6 +597,51 @@ Recorded so the boundaries are visible in review rather than rediscovered later.
 
 ---
 
+## D-20: Host compute target (2026-11-17)
+
+**Decision**: production runs the same image as two Docker services on a single Linux
+host, a Raspberry Pi 4 (2 GB, arm64, Debian 13). AWS keeps S3 (media), DynamoDB (jobs),
+SQS (queue) and SSM (secrets). Lambda remains a supported target and is still what the
+Terraform describes.
+
+**Why**: the extraction egress was the largest accepted risk (D-14), a residential
+address is a better source than a datacenter one, and the host already runs behind a
+tunnel with a valid certificate. It also removes the per-invocation Lambda compute bill,
+which was the dominant variable cost.
+
+**Shape**:
+
+- One image, two commands: `ytdl.server.web` (three API routes, the Telegram webhook, the
+  worker's terminal-event hook) and `ytdl.server.worker_loop` (SQS consumer). Both reuse
+  the existing handlers; the HTTP module only rebuilds the API Gateway v2 event the
+  handlers already read.
+- The queue keeps one consumer. `worker_lambda_enabled = false` removes the Lambda event
+  source mapping; enabling both would let two workers claim the same message.
+- Job events travel from the worker to the bot as an authenticated `POST` on the
+  container network, with the same JSON body SNS carried, because SNS cannot invoke a
+  process that is not an AWS compute target. The worker still never holds the bot token.
+- The host authenticates as IAM user `ytdl-<env>-pi`, whose policy is the union of the
+  three function roles. The access key is created out of band and held in a mode-0600 file
+  on the host; a Terraform-managed key would put the secret in state.
+- Worker scratch space is a directory on the USB disk, never the SD card: one 1080p job
+  needs more room than the root filesystem has.
+- The five alarms built on Lambda and API Gateway metrics were deleted in production.
+  With no traffic they could only stay green, and a green alarm that cannot fire reads as
+  evidence of health.
+
+**Verified**: image 874 MB; a 240p job completed in 27 s end to end; the presigned link
+served the 7.8 MB file directly from S3; all existing services on the host stayed up.
+**Constraint**: the SD card had 2.5 GB free before the image, against a 2 GiB floor that
+Jellyfin enforces at startup. The image was built on the Python base already on the host
+so the layers are shared, and 1.2 GB of caches were removed from the card first.
+
+**Rejected**: keeping the worker on Lambda (same egress risk, higher cost); Fargate
+(same datacenter addresses, more moving parts); Telegram long polling (no Caddy, but the
+webhook path, the health check and the tutorial already existed and a tunnel was in
+place).
+
+---
+
 ## Resolved: everything the Technical Context asked for
 
 | Technical Context field | Resolution |

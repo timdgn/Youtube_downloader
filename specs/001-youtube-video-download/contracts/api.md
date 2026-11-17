@@ -6,6 +6,11 @@
 **Content type**: `application/json; charset=utf-8` on every request with a body and
 every response
 
+> **Deployment note (2026-11-17).** On the host target the base URL is the public origin
+> (`https://ytdl.timcloud.fr/v1`). The front end rebuilds the same API Gateway v2 event
+> from the incoming request, so the paths, status codes, headers and bodies below are
+> unchanged; only the host in the URL differs.
+
 Three routes. No other route exists, and any other path returns `404` in the standard
 error envelope.
 

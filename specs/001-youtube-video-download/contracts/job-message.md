@@ -9,6 +9,11 @@
 The message is a pointer, not a payload. It is never larger than a few hundred bytes,
 well inside the 1 MB asynchronous invocation limit.
 
+> **Deployment note (2026-11-17).** On the host target the consumer is the host's worker
+> loop, not Lambda. It receives one message at a time, deletes on success and leaves a
+> reported batch-item failure for redelivery after the queue's visibility timeout, which
+> is the same guarantee `ReportBatchItemFailures` provides.
+
 ---
 
 ## Body

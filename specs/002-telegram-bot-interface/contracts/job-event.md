@@ -76,6 +76,25 @@ that has not reached its final state.
 
 ---
 
+## Host deployment: the same event over HTTP
+
+SNS cannot invoke a process that is not an AWS compute target, so production carries the
+same JSON body over the container network.
+
+| Property | Value |
+|----------|-------|
+| Endpoint | `POST /internal/job-event` on the web service |
+| Auth | `Authorization: Bearer <api token>`, read from the same SSM parameter as the API |
+| Body | unchanged: `{"version":1,"event":"job_completed"\|"job_failed","job_id":"..."}` |
+| Response | `202` accepted, `401` bad or missing token, `400` unreadable body |
+| Delivery | The handler runs synchronously before the `202`, so a failure is visible to the worker |
+| Retries | None. The worker logs `job_event_publish_failed` and the job still completes; `/list` and a repeated request recover the link |
+
+The worker still never holds the bot token: the bearer it presents is the API token, and
+the web service owns the Telegram client.
+
+---
+
 ## Why this shape
 
 The worker must not hold a chat token, and the bot must not poll. SNS is the smallest

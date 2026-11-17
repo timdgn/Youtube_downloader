@@ -38,7 +38,7 @@ trace.
 | `invalid_input` | false | Not a single-video YouTube URL: foreign host, malformed id, playlist, channel, live path | Fix the link. Rejection happens before any media transfer and costs nothing. |
 | `unsupported_media` | false | Private, deleted, members-only, age-restricted, region-locked, DRM-protected, or a live broadcast | Nothing to fix in the service. The content is out of scope; do not resubmit. |
 | `limit_exceeded` | false | Duration above 60 minutes, or estimated size above 4 GB | Resubmitting the same link gives the same answer. These caps are configuration values (`MAX_DURATION_SECONDS`, `MAX_OUTPUT_BYTES`). |
-| `upstream_problem` | true or false | Throttling or a network reset (retryable); a "not a bot" challenge or a hard 403 (not retryable) | Retryable: wait a few minutes and submit again. Not retryable: the Lambda egress address is being refused. See section 6. |
+| `upstream_problem` | true or false | Throttling or a network reset (retryable); a "not a bot" challenge or a hard 403 (not retryable) | Retryable: wait a few minutes and submit again. Not retryable: the egress address is being refused. See section 6. |
 | `internal_error` | true | Storage failure, deadline exceeded at 780 s, unexpected exception | Read the worker log for the `job_id`. Resubmit once. If it repeats, treat it as a defect. |
 
 Two rules that follow from this table:
@@ -138,12 +138,16 @@ new token.
 
 ---
 
-## 6. YouTube refuses the Lambda egress address
+## 6. YouTube refuses the egress address
 
 Symptom: `upstream_problem` with `retryable: false`, and a message naming a bot check or a
 403 from the media host. This is the largest external risk in the design (research D-14).
-AWS Lambda egress addresses are datacenter ranges that YouTube scores badly. A PO token
-does not fix IP reputation.
+A PO token does not fix IP reputation.
+
+The address depends on the target. Production runs on the Raspberry Pi, so the egress is a
+residential connection: better regarded than a datacenter range, but still shared with
+every other service behind the same public address, and a CGNAT pool can be scored like
+one. On the Lambda target the egress is a datacenter range, which YouTube scores worse.
 
 Remedies, in order of effort:
 
@@ -155,15 +159,15 @@ Remedies, in order of effort:
 3. **Player client override.** Set `PLAYER_CLIENT` to a client that works from your region.
 
 All three are empty by default and add no flags when unset. Treat the cookies file as a
-credential: it is never logged, and it lives under a prefix only the worker role can read.
+credential: it is never logged, and it lives under a prefix only the compute may read.
 
 **Cookies must be fresh.** An export whose session cookies have expired looks present but
 authenticates nothing, and the hard block remains. Check the file date before blaming the
 network: in the first full deployment (2026-11-16) an export with 136 of 160 cookies past
 their expiry still produced a non-retryable block, and forcing the `mweb` or `ios` player
 client did not change it. Re-export from a signed-in browser session, upload over
-`config/cookies.txt`, then submit again. The worker reads the file at cold start, so a new
-job always picks up the new copy.
+`config/cookies.txt`, then submit again. The worker reads the file once when its process
+starts, so restarting the worker container is what picks up a new copy on the host.
 
 ---
 
@@ -202,6 +206,13 @@ terraform -chdir=infra init -reconfigure -backend-config=backend/dev.backend \
 
 `make deploy` and `make destroy` do this for you and refuse to run without `ENV`.
 
+**The two environments are not symmetric any more.** `dev` deploys the Lambda target;
+`prod` keeps the same Lambda resources but serves traffic from the Raspberry Pi
+(section 12). `make deploy ENV=prod` applies Terraform and nothing else: it neither builds
+nor reloads the host image, which travels separately with `make pi-ship`. A change that
+must reach production therefore takes an apply and a host reload, and a teardown takes the
+reverse.
+
 This is not a formality. An apply with the wrong backend does not fail: it destroys the
 other environment's resources and adopts the new names into the wrong state file. That
 happened once during the first bring-up on 2026-11-16, before `-reconfigure` was made
@@ -221,7 +232,10 @@ Once a month, read the bill; never induce it.
 1. Read the month to date:
    `aws ce get-cost-and-usage --region us-east-1 --time-period Start=<first>,End=<today> --granularity MONTHLY --metrics UnblendedCost`.
 2. Compare with the research D-02 table, which expects roughly $1.40 for the documented
-   profile (100 videos, 15 minutes each, 7-day retention).
+   profile (100 videos, 15 minutes each, 7-day retention). Since 2026-11-17 the worker
+   compute runs on the host, so the Lambda duration and request lines in that table no
+   longer apply to production: what remains is S3 storage and requests, the DynamoDB
+   table, the queue, and CloudWatch. Expect less than the model, not more.
 3. Above $5, check average `media_size_bytes` and retention overlap before anything else.
    Above $10 the ceiling alarm fires: stop submissions until the cause is understood.
 4. Record the figure and the date at the bottom of this section.
@@ -231,7 +245,7 @@ Once a month, read the bill; never induce it.
 | 2026-11-16 | $0.00 | validation day, partial day, Cost Explorer still settling |
 
 Do not generate load, extra submissions, or a synthetic month to "test" the ceiling.
-Constitution principle V (v1.1.0) makes the ceiling a guardrail, not a test target: it is
+Constitution principle V makes the ceiling a guardrail, not a test target: it is
 justified by arithmetic and monitored from billing data.
 
 ---

@@ -9,6 +9,13 @@ This file records the decisions this feature adds, and only those. Everything th
 foundational plan settled (runtime, container image, queue shape, storage split,
 presigning, failure taxonomy) stands unchanged unless a decision below says otherwise.
 
+> **Amendment 2026-11-17.** The decisions below were taken against the Lambda target and
+> remain valid for it. Production now runs the bot in the host image (001 research D-20):
+> D-01's "dedicated HTTP API" is the host's public origin, D-04's SNS transport is an
+> authenticated loopback `POST` carrying the same body, and D-11's "one function" is one
+> container service. Nothing about the command grammar, the replies, the allowlist, the
+> ownership model or the idempotency rule changed.
+
 ---
 
 ## Verified platform facts

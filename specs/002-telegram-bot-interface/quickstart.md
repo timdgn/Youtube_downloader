@@ -9,6 +9,13 @@ teardown that leaves nothing behind. Every step states what to observe. No step
 generates traffic to approach a cost ceiling; the rate-limit behaviour is verified by
 the offline suite instead (constitution principle V).
 
+> **Amendment 2026-11-17.** Production runs the bot on the host compute target
+> (`docs/runbook.md` section 12). Sections 1 to 5 are unchanged except for the address
+> Telegram reports: it is the public origin
+> `https://ytdl.timcloud.fr/telegram/webhook`, not an `execute-api` URL. The teardown in
+> section 14 must also stop the two host services, or the front end keeps answering a
+> webhook that no longer has a consumer.
+
 ---
 
 ## 0. What you need

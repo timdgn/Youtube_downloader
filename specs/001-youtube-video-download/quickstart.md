@@ -291,16 +291,47 @@ the environment, and no further charges accrue.
 
 ## 14. Operational runbook (short form)
 
+On a host deployment (see the appendix), the Lambda and API Gateway alarms no longer
+exist; what remains is the dead-letter queue, the webhook health check and the budget
+pair.
+
 | Alarm | First action |
 |-------|--------------|
-| API 5xx above threshold | Read the API log for the failing `job_id`; check DynamoDB and SQS permissions before changing code |
-| Worker errors above threshold | Group by `failure_category`; a spike in `upstream_problem` is YouTube, not us |
-| Worker throttles | The reserved concurrency of 2 is being hit; expected at the cap, investigate only if it persists outside bursts |
-| Worker p95 duration above 600 s | Approaching the 900 s ceiling; check average output size and download rate before raising memory |
 | DLQ depth above zero | Read the message, find the `job_id`, read its failure; a dead letter is always a defect |
+| Bot webhook health below 1 | `make bot-health ENV=<env>`; re-register if the URL is gone, rotate the token if Telegram answers 401 |
 | Estimated charges above $5 | Check average `media_size_bytes`; the dominant driver is retention of large files |
 | Estimated charges above $10 | Ceiling reached. Stop submissions, inspect the cost explorer, then decide on a change |
 
 Full documentation required by FR-018 ships with the feature: how to submit, poll,
 fetch, provision, destroy, and what each failure category means. Both commands and
 their expected outputs are in this file.
+
+---
+
+## Appendix: host compute target (2026-11-17)
+
+Production runs the same image as two Docker services on an arm64 Linux host (a
+Raspberry Pi 4, 2 GB). AWS keeps S3, DynamoDB, SQS and SSM. The checks in sections 3 to
+10 are unchanged, because the routes and the JSON are unchanged.
+
+1. Build and ship the image. There is no registry in the path:
+   ```bash
+   make pi-ship IMAGE_TAG=<git sha> PI_HOST=rasp
+   ```
+2. Point both services at the new tag in `/opt/serveur/compose.yaml`, then recreate them:
+   ```bash
+   ssh rasp 'cd /opt/serveur && sudo docker compose up -d ytdl ytdl-worker'
+   ```
+3. Apply the two Terraform switches: `worker_lambda_enabled = false` (one consumer) and
+   `bot_public_url = "https://<public origin>"` (the webhook leaves API Gateway).
+4. Verify, in this order: `curl https://<public origin>/healthz`; `make bot-health
+   ENV=<env>`; one `/test` in the chat; then a terminal submission against the same
+   origin.
+5. Tear down in the reverse order: stop the two services first, then `make destroy
+   ENV=<env>`. A consumer left running would poll a deleted queue, and the front end would
+   answer `500` on every call.
+
+The host needs a credential the Lambda roles never needed: IAM user `ytdl-<env>-pi`, whose
+key lives in a mode-0600 file on the host and is rotated with the procedure in
+`docs/runbook.md` section 12. Disk space is the binding constraint: keep at least 2.25 GiB
+free on the boot device, or the other services on the machine refuse to start and update.

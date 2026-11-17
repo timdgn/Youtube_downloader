@@ -1,7 +1,7 @@
 # Contract: Bot Commands
 
 **Feature**: `002-telegram-bot-interface`
-**Producer**: `bot` Lambda, in reply to one webhook update
+**Producer**: the bot handler, in reply to one webhook update (Lambda or host target)
 **Consumer**: the approved operator, in a private chat
 
 Every reply is plain text. Every reply is at most 3,500 characters per page, split on
