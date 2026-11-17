@@ -20,7 +20,7 @@ worker_memory_mb            = 3008
 worker_timeout_seconds      = 900
 worker_ephemeral_storage_mb = 10240
 
-alarm_email = ""
+alarm_email = "operator@example.invalid"
 
 # Compute runs on the Raspberry Pi: the host polls the job queue with its own
 # credentials, so the Lambda event source mapping must stay off or the two
