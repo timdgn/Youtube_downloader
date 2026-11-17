@@ -51,21 +51,20 @@ Two rules that follow from this table:
 
 ## 3. Alarm response
 
-Seven operational alarms publish to `ytdl-<env>-alarms` in Paris. The two budget alarms
+Two operational alarms publish to `ytdl-<env>-alarms` in Paris. The two budget alarms
 publish to `ytdl-<env>-alarms-us-east-1`, because a CloudWatch alarm can only notify a
 topic in its own region and `AWS/Billing` exists only in `us-east-1`. Both topics need a
 confirmed email subscription; the same address is used for each when `alarm_email` is set.
 
-Each row names the first action, not the whole investigation.
+Five Lambda and API Gateway alarms (`api-5xx`, `worker-errors`, `worker-throttles`,
+`worker-duration-p95`, `bot-errors`) were deleted on 2026-11-17. The compute moved to the
+Raspberry Pi, so those resources no longer receive traffic and the alarms could only stay
+green; a green alarm that cannot fire is worse than no alarm. Process failures now surface
+in the dead-letter queue, in the webhook health check, and in the container logs.
 
 | Alarm | Meaning | First action |
 |-------|---------|--------------|
-| API 5xx above zero | The API is failing requests | Read the API log for the failing `job_id`. Check DynamoDB and SQS permissions before touching code. |
-| Worker errors above zero | Jobs are failing | Group the log by `failure_category`. A `upstream_problem` spike is YouTube, not the service. |
-| Worker throttles above zero | Reserved concurrency of 2 is saturated | Expected during bursts. Investigate only if it persists when no jobs are queued. |
-| Worker p95 duration above 600 s | Approaching the 900 s Lambda ceiling | Check average `media_size_bytes` and download rate. Raising memory is a last resort; the deadline guard aborts at 780 s. |
 | DLQ depth above zero | A message was received twice and abandoned | Read the message, take its `job_id`, read that job's `failure_category`. Any dead letter is a defect. |
-| Bot errors above zero | A bot invocation raised | Read `/aws/lambda/ytdl-<env>-bot` and group by `event` and `outcome`. Section 11 has the named responses. |
 | Bot webhook health below 1 | The webhook is gone or the token was revoked | `make bot-health ENV=<env>`, then re-register, then rotate the token if Telegram answers 401. Section 11. |
 | Estimated charges above $5 | Half the monthly ceiling | Check average output size and retention overlap. Storage is the dominant driver, not requests. |
 | Estimated charges above $10 | Ceiling reached | Stop submitting. Inspect Cost Explorer, decide on a change, then resubmit. |
@@ -75,28 +74,23 @@ Budget context: the documented profile is 100 videos per month at 15 minutes eac
 headroom, not a restatement of the estimate.
 
 This ceiling is a guardrail, not a target. No drill or test generates load to approach
-it (constitution principle V, v1.1.0): read actual spend, never induce it.
+it (constitution principle V): read actual spend, never induce it.
 
-Observed at validation (2026-11-16, `eu-west-3`):
+Observed at validation:
 
-- Worker duration: a 10.6-minute 1080p video (269 MB) completed in **14.9 s** of worker
-  time; a 19-second 240p video took **6.2 s** warm and **27.7 s** cold. The 600 s alarm
-  has a very large margin because processing is a stream copy, not a re-encode.
-- Cost: Cost Explorer reported **$0.00** for the day of validation, which is expected for
-  a few minutes of use and a lagging daily metric. The $10 ceiling has not been exercised.
+- Worker duration: on the Pi, a 19-second 240p video (7.8 MB) completed in **27 s** end to
+  end, download included. The Lambda figures (14.9 s for a 10.6-minute 1080p video) are
+  recorded in `specs/001-youtube-video-download/` and no longer describe production.
+- Cost: Cost Explorer reported **$0.00** for the day of the Lambda validation, which is
+  expected for a few minutes of use and a lagging daily metric. The $10 ceiling has not
+  been exercised.
 - Alarm delivery: the two topics have **no email subscriber** while `alarm_email` is empty,
   so delivery was not tested. Set the address and confirm the subscription email before
   relying on the alarms.
 
-Two prerequisites for these signals:
-
-- **Request logs.** HTTP API access logging needs no account-level CloudWatch role (unlike
-  REST APIs). If request log lines never appear in `/aws/apigateway/<prefix>`, check that
-  per-account API Gateway setting first. It is deliberately not managed by Terraform,
-  because it is an account-wide toggle.
-- **Billing metric.** `AWS/Billing EstimatedCharges` only publishes in `us-east-1` and
-  only once billing data exists for the account. A brand-new account can show the two
-  budget alarms in `INSUFFICIENT_DATA` for a day. That is not a broken alarm.
+A brand-new account can show the two budget alarms in `INSUFFICIENT_DATA` for a day,
+because `AWS/Billing EstimatedCharges` publishes only once billing data exists and only in
+`us-east-1`. That is not a broken alarm.
 
 ---
 
@@ -284,22 +278,16 @@ An expired link is not the expired-result row. A link that lived its 60 minutes 
 replaced from the stored file when the operator sends the same request again, with no
 second download; the expired-result sentence means the file itself was gone.
 
-**Alarm `ytdl-<env>-bot-errors`.** AWS/Lambda `Errors` on the bot function, sum over five
-minutes, alarm above zero. It counts invocations that raised: a job event that could not
-be delivered, a cold start that could not read its configuration. A webhook delivery that
-fails internally is caught and answered `500`, so it appears in the log group as
-`update_failed` but does not raise this alarm on its own; Telegram retries it either way.
-
-Response, in order:
-
-1. Read `/aws/lambda/ytdl-<env>-bot` and group by `event` and `outcome`.
-   `update_failed` points at the webhook path, `health_failed` at the hourly check,
-   `job_event_missing` or `job_event_malformed` at an SNS delivery.
-2. `make bot-health ENV=<env>`. It calls Telegram once and prints the registration,
-   `pending_update_count`, `max_connections` and `allowed_updates`.
-3. If that shows no URL at all, the registration or the token is at fault: follow the
-   webhook-health response below. If the job record carries a `failure_category`, section
-   2 applies instead; the bot only relays that sentence.
+**Bot failures without an alarm.** The `bot-errors` alarm was deleted with the other
+Lambda and API Gateway alarms (section 3). A delivery that fails internally is still
+caught and answered `500`, logged as `update_failed` with the exception's class name, and
+Telegram retries it. Start from `sudo docker logs ytdl` and group by `event` and `outcome`;
+`update_failed` points at the webhook path, `health_failed` at the hourly check. Then run
+`make bot-health ENV=<env>`, which calls Telegram once and prints the registration,
+`pending_update_count`, `max_connections` and `allowed_updates`. If that shows no URL at
+all, the registration or the token is at fault: follow the webhook-health response below.
+If the job record carries a `failure_category`, section 2 applies instead; the bot only
+relays that sentence.
 
 **Alarm `ytdl-<env>-bot-webhook-health`.** Namespace `YTDL/Bot`, metric
 `WebhookHealthy`, dimension `Environment`, statistic `Minimum`, one-hour periods, alarm
@@ -431,10 +419,10 @@ Docker image with two roles.
 
 The hourly health rule still invokes the (otherwise idle) bot Lambda. Its environment now
 carries the Pi's webhook URL, so `ytdl-prod-bot-webhook-health` remains a real check on the
-Pi's registration. `ytdl-prod-bot-errors`, `ytdl-prod-api-5xx` and the two Lambda worker
-alarms watch functions that no longer receive traffic: ignore them until the Lambda side is
-removed. `ytdl-prod-dlq-not-empty` is still meaningful, because the Pi worker uses the same
-queue.
+Pi's registration. The five alarms that watched the dormant API Gateway and Lambda
+functions were deleted on 2026-11-17, so only `ytdl-prod-dlq-not-empty` and the webhook
+health check remain in Paris, plus the two budget alarms in `us-east-1`. The DLQ alarm is
+meaningful because the Pi worker uses the same queue.
 
 **Paths on `rasp`.**
 
