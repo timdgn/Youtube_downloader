@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 
+from ytdl.server import worker_loop
 from ytdl.server.worker_loop import WorkdirError, check_workdir
 
 BOOT_DEVICE = 100
@@ -62,3 +63,21 @@ def test_a_writable_directory_on_another_device_is_accepted(tmp_path: Any) -> No
     check_workdir(str(target), stat=_usr_stat)
 
     assert list(target.iterdir()) == []
+
+
+def test_main_exits_with_the_reason_in_an_allowed_field(monkeypatch: Any) -> None:
+    calls: list[tuple[str, dict[str, object]]] = []
+
+    class _Log:
+        def error(self, event: str, **fields: object) -> None:
+            calls.append((event, fields))
+
+    monkeypatch.setattr("ytdl.server.worker_loop.get_logger", lambda _name: _Log())
+    monkeypatch.setenv("YTDL_WORK_DIR", "")
+
+    with pytest.raises(SystemExit) as exit_info:
+        worker_loop.main()
+
+    assert exit_info.value.code == 1
+    assert calls[0][0] == "workdir_invalid"
+    assert "message" in calls[0][1]

@@ -125,7 +125,7 @@ def main() -> None:
     try:
         check_workdir(os.environ.get("YTDL_WORK_DIR", ""))
     except WorkdirError as error:
-        logger.error("workdir_invalid", reason=str(error))
+        logger.error("workdir_invalid", message=str(error))
         raise SystemExit(1) from None
 
     config = load_config()
