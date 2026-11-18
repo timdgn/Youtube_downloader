@@ -461,6 +461,12 @@ meaningful because the Pi worker uses the same queue.
 | `/var/log/caddy/ytdl.log` | one JSON line per request, rotated at 10 MiB, five kept |
 | `sudo docker logs ytdl` / `ytdl-worker` | the application's own structured lines |
 
+The worker refuses to start unless `YTDL_WORK_DIR` is set and resolves to a filesystem other
+than `/`. A missing variable, a missing directory or the same device writes one
+`workdir_invalid` line with the reason and exits 1, so the container restarts instead of
+quietly downloading onto the SD card. Since the check runs inside the container, "different
+device" means different from the container's `/`, which is the overlay on the card.
+
 **Deploy an update.** The image is built on an arm64 machine and travels as a stream: there
 is no registry in the path.
 

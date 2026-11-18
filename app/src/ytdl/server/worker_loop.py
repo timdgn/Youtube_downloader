@@ -8,7 +8,9 @@ retry, visibility and dead-letter behaviour stay those of the queue.
 
 from __future__ import annotations
 
+import os
 import signal
+import tempfile
 import threading
 from typing import Any
 
@@ -20,6 +22,41 @@ from ytdl.worker.handler import build_worker
 
 WAIT_SECONDS = 20
 ERROR_SLEEP_SECONDS = 5
+
+
+class WorkdirError(RuntimeError):
+    """The download scratch directory cannot be trusted."""
+
+
+def check_workdir(path: str, root: str = "/", stat: Any = os.stat) -> None:
+    """Refuse to start when the scratch directory could fill the boot device.
+
+    A missing or same-device directory means a download lands on the SD card,
+    which the other services on the host share, so this fails loudly at boot
+    rather than during a job. Lambda does not run this: ``main`` is the Docker
+    consumer only, and there ``/tmp`` is the correct place.
+    """
+    if not path:
+        raise WorkdirError("YTDL_WORK_DIR is not set")
+
+    try:
+        target = stat(path)
+    except OSError as error:
+        raise WorkdirError(f"{path} cannot be inspected: {error}") from error
+
+    if not os.path.isdir(path):
+        raise WorkdirError(f"{path} is not a directory")
+
+    if target.st_dev == stat(root).st_dev:
+        raise WorkdirError(
+            f"{path} is on the same filesystem as {root}, so a download would fill the boot device"
+        )
+
+    try:
+        probe = tempfile.mkdtemp(dir=path)
+    except OSError as error:
+        raise WorkdirError(f"{path} is not writable: {error}") from error
+    os.rmdir(probe)
 
 
 def run(
@@ -84,8 +121,14 @@ def _handle(
 
 
 def main() -> None:
-    config = load_config()
     logger = get_logger("worker-loop")
+    try:
+        check_workdir(os.environ.get("YTDL_WORK_DIR", ""))
+    except WorkdirError as error:
+        logger.error("workdir_invalid", reason=str(error))
+        raise SystemExit(1) from None
+
+    config = load_config()
     stop = threading.Event()
 
     def request_stop(_signum: int, _frame: Any) -> None:
