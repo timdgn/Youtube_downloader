@@ -34,9 +34,7 @@ def _job(**overrides: Any) -> dict[str, Any]:
 def test_one_line_carries_every_documented_field() -> None:
     line = render_list([_job()], NOW)
 
-    assert line == (
-        "3. dQw4w9WgXcQ-high-k2q1.mp4 | Some video title | 720p | 182.4 MB | 2d 3h old | 3 days left"
-    )
+    assert line == ("3. Some video title | 720p | 182.4 MB | 2d 3h old | 3 days left")
 
 
 def test_an_audio_item_prints_its_mp3_name_and_quality() -> None:
@@ -49,8 +47,9 @@ def test_an_audio_item_prints_its_mp3_name_and_quality() -> None:
 
     line = render_list([job], NOW)
 
-    assert line.split(" | ")[0] == "3. dQw4w9WgXcQ-mp3-k2q1.mp3"
-    assert line.split(" | ")[2] == "mp3"
+    assert line.split(" | ")[0] == "3. Some video title"
+    assert line.split(" | ")[1] == "mp3"
+    assert ".mp3" not in line
 
 
 def test_size_prints_one_decimal_place() -> None:
@@ -82,20 +81,20 @@ def test_deleted_expired_and_unfinished_items_are_not_listed() -> None:
     rendered = render_list(jobs, NOW)
 
     assert len(rendered.splitlines()) == 1
-    assert "aaaa0000000001".endswith("0001")
-    assert "-0001.mp4" in rendered
+    assert rendered.startswith("3. Some video title |")
+    assert "aaaa0000000002" not in rendered
 
 
 def test_the_query_order_is_preserved() -> None:
     jobs = [
-        _job(job_id="newest00000001", video_id="aaaaaaaaaaa"),
-        _job(job_id="older000000002", video_id="bbbbbbbbbbb"),
+        _job(job_id="newest00000001", video_title="Newest video"),
+        _job(job_id="older000000002", video_title="Older video"),
     ]
 
     lines = render_list(jobs, NOW).splitlines()
 
-    assert "aaaaaaaaaaa-high-0001.mp4" in lines[0]
-    assert "bbbbbbbbbbb-high-0002.mp4" in lines[1]
+    assert "Newest video" in lines[0]
+    assert "Older video" in lines[1]
 
 
 def test_an_empty_library_says_so() -> None:
@@ -135,5 +134,5 @@ def test_a_job_without_a_number_prints_without_one() -> None:
 
     line = render_list([job], NOW)
 
-    assert line.startswith("dQw4w9WgXcQ-high-k2q1.mp4 | ")
+    assert line.startswith("Some video title | ")
     assert " . " not in line

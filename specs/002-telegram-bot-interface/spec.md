@@ -112,7 +112,7 @@ The bot accepts exactly these commands. Each is documented in the help text and 
 | Command | Behaviour |
 |---------|-----------|
 | `/start` | Greets the operator and points to the help command. |
-| `/list` | Lists the operator's stored items, one line each, with name, source video, produced quality, size, age, and days before automatic deletion. |
+| `/list` | Lists the operator's stored items, one line each, with the item number, the video title, produced quality, size, age, and days before automatic deletion. |
 | `/link <number>` | Issues a fresh download link for the stored item carrying that number, without downloading anything again. |
 | `/delete <name>` | Deletes one stored item named as shown by the list. |
 | `/empty` | Deletes every stored item belonging to the operator, after an explicit confirmation. |
@@ -173,7 +173,7 @@ Example: "https://www.youtube.com/watch?v=example medium"
 - **FR-010**: The `/help` reply MUST contain the help text fixed in the Command Surface section, complete and unaltered in wording, order, and example.
 - **FR-011**: The bot MUST answer `/start` with a greeting followed by the fixed help
   text, in one message, so a first-time operator sees the commands without asking for them.
-- **FR-012**: The `/list` reply MUST show, for each of the operator's stored items, a name unique within that operator's library, the source video, the quality actually produced, the size, the age, and the days remaining before automatic deletion, and MUST split across messages, without loss or duplication, when one message cannot hold the list.
+- **FR-012**: The `/list` reply MUST show, for each of the operator's stored items, the number reserved for that item, the source video's title, the quality actually produced, the size, the age, and the days remaining before automatic deletion, and MUST split across messages, without loss or duplication, when one message cannot hold the list. The stored file name MUST NOT be repeated in the listing: the number identifies the item.
 - **FR-013**: `/delete` MUST accept either the number printed beside an item by `/list` or
   its name, MUST delete only the item so identified, MUST confirm the deletion by name, and
   MUST delete nothing when the number or name is unknown. A number MUST NOT be reused for a

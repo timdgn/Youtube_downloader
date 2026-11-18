@@ -169,8 +169,8 @@ def test_list_shows_one_line_per_live_item_of_the_caller() -> None:
     text = telegram.messages[0]["text"]
     lines = text.splitlines()
     assert len(lines) == 2
-    assert any("-high-" in line for line in lines)
-    assert any("-medium-" in line for line in lines)
+    assert any("Stored video 1" in line for line in lines)
+    assert any("Stored video 2" in line for line in lines)
     assert "Stored video 3" not in text
 
 

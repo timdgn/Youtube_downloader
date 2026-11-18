@@ -231,23 +231,26 @@ This bot only works in a private chat.
 One line per item, in descending creation order. Each line starts with the item's number:
 
 ```text
-<n>. <video_id>-<tier>-<job_id last 4>.<ext> | <title> | <produced_quality> | <size> | <age> old | <days> days left
+<n>. <title> | <produced_quality> | <size> | <age> old | <days> days left
 ```
 
 Example:
 
 ```text
-3. dQw4w9WgXcQ-high-k2q1.mp4 | Some video title | 720p | 182.4 MB | 2d 3h old | 4 days left
+3. Some video title | 720p | 182.4 MB | 2d 3h old | 4 days left
 ```
 
 Numbers descend because the list is newest first. They are allocated once per account and
 never reused, so a number read here still names the same file after another download or
 delete. An item written before numbers existed prints without one and is deleted by name.
 
+The stored name (`<video_id>-<tier>-<job_id last 4>.<ext>`, the label `/link` prints and
+`/delete` accepts) is deliberately absent: the number identifies the item, and the name is
+a download filename rather than an identifier worth reading in a listing.
+
 | Field | Derivation |
 |-------|------------|
 | Number | The job's stored `seq`, allocated per account before the job is written |
-| Name | Derived from the job, never stored. It is accepted by `/delete`, as is the number |
 | Title | Stored on the job by the worker, control characters stripped, 80 characters at most |
 | Quality | `produced_quality`, the label recorded for the stored file |
 | Size | `media_size_bytes`, one decimal place |

@@ -226,23 +226,23 @@ answers `Already working on ...` and creates nothing new.
 A `/list` line looks like this:
 
 ```text
-3. dQw4w9WgXcQ-high-k2q1.mp4 | Some video title | 720p | 182.4 MB | 2d 3h old | 4 days left
+3. Some video title | 720p | 182.4 MB | 2d 3h old | 4 days left
 ```
 
 The leading number is allocated once, when the item is created, and never reused. It is
 stable: after another download or another delete, `3` still means the same file. Numbers
-descend because the list is newest first. The service number and the file name both
-identify exactly one item, so either works:
+descend because the list is newest first. The list does not repeat the stored file name,
+which is a download label rather than something to read: the number is the handle.
 
 ```text
 /delete 3
-/delete dQw4w9WgXcQ-high-k2q1.mp4
 ```
 
-You receive `Deleted 3: dQw4w9WgXcQ-high-k2q1.mp4.` or `Deleted
-dQw4w9WgXcQ-high-k2q1.mp4.` and the object is gone from S3. The job record survives with a
-`deleted_at` timestamp, so history keeps meaning. Send the original request again and the
-video is downloaded afresh rather than a dead link being offered.
+You receive `Deleted 3: dQw4w9WgXcQ-high-k2q1.mp4.` and the object is gone from S3. The
+job record survives with a `deleted_at` timestamp, so history keeps meaning. Send the
+original request again and the video is downloaded afresh rather than a dead link being
+offered. `/delete` still accepts the stored name shown by `/link` if you prefer it, but
+`/list` no longer prints it.
 
 A finished link expires after 60 minutes; the file itself stays for 7 days. `/link 3`
 signs a new URL for the same stored object, so nothing is downloaded again. It answers

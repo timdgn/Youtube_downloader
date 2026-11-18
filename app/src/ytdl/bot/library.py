@@ -126,7 +126,6 @@ def render_history(
 def _line(job: dict[str, Any], now_epoch: int) -> str:
     fields = " | ".join(
         (
-            keys.display_name(job),
             _title(job),
             _produced(job),
             messages.format_size(job.get("media_size_bytes")),
