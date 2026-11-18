@@ -31,10 +31,10 @@ def _job(**overrides: Any) -> dict[str, Any]:
     return job
 
 
-def test_one_line_carries_every_documented_field() -> None:
+def test_one_line_carries_the_documented_fields() -> None:
     line = render_list([_job()], NOW)
 
-    assert line == ("3. Some video title | 720p | 182.4 MB | 2d 3h old | 3 days left")
+    assert line == "3. Some video title 720p 182.4 MB"
 
 
 def test_an_audio_item_prints_its_mp3_name_and_quality() -> None:
@@ -47,25 +47,13 @@ def test_an_audio_item_prints_its_mp3_name_and_quality() -> None:
 
     line = render_list([job], NOW)
 
-    assert line.split(" | ")[0] == "3. Some video title"
-    assert line.split(" | ")[1] == "mp3"
+    assert line == "3. Some video title mp3 182.4 MB"
     assert ".mp3" not in line
 
 
 def test_size_prints_one_decimal_place() -> None:
     assert "182.4 MB" in render_list([_job()], NOW)
     assert "0.0 MB" in render_list([_job(media_size_bytes=0)], NOW)
-
-
-def test_age_prints_days_and_hours() -> None:
-    assert "2d 3h old" in render_list([_job()], NOW)
-    assert "0d 0h old" in render_list([_job(media_created_at=NOW)], NOW)
-    assert "1d 0h old" in render_list([_job(media_created_at=NOW - DAY)], NOW)
-
-
-def test_days_left_rounds_up() -> None:
-    assert "3 days left" in render_list([_job(media_expires_at=NOW + 2 * DAY + 1)], NOW)
-    assert "1 days left" in render_list([_job(media_expires_at=NOW + 1)], NOW)
 
 
 def test_deleted_expired_and_unfinished_items_are_not_listed() -> None:
@@ -81,7 +69,7 @@ def test_deleted_expired_and_unfinished_items_are_not_listed() -> None:
     rendered = render_list(jobs, NOW)
 
     assert len(rendered.splitlines()) == 1
-    assert rendered.startswith("3. Some video title |")
+    assert rendered.startswith("3. Some video title ")
     assert "aaaa0000000002" not in rendered
 
 
@@ -134,5 +122,5 @@ def test_a_job_without_a_number_prints_without_one() -> None:
 
     line = render_list([job], NOW)
 
-    assert line.startswith("Some video title | ")
+    assert line.startswith("Some video title ")
     assert " . " not in line

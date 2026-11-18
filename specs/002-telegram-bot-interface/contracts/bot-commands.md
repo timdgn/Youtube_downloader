@@ -231,13 +231,13 @@ This bot only works in a private chat.
 One line per item, in descending creation order. Each line starts with the item's number:
 
 ```text
-<n>. <title> | <produced_quality> | <size> | <age> old | <days> days left
+<n>. <title> <produced_quality> <size>
 ```
 
 Example:
 
 ```text
-3. Some video title | 720p | 182.4 MB | 2d 3h old | 4 days left
+3. Some video title 720p 182.4 MB
 ```
 
 Numbers descend because the list is newest first. They are allocated once per account and
@@ -248,14 +248,18 @@ The stored name (`<video_id>-<tier>-<job_id last 4>.<ext>`, the label `/link` pr
 `/delete` accepts) is deliberately absent: the number identifies the item, and the name is
 a download filename rather than an identifier worth reading in a listing.
 
+Fields are separated by one space, because pipes made a short line read like a table.
+
 | Field | Derivation |
 |-------|------------|
 | Number | The job's stored `seq`, allocated per account before the job is written |
 | Title | Stored on the job by the worker, control characters stripped, 80 characters at most |
 | Quality | `produced_quality`, the label recorded for the stored file |
 | Size | `media_size_bytes`, one decimal place |
-| Age | Now minus `media_created_at`, in days and hours |
-| Days left | Ceiling of `(media_expires_at - now) / 86400` |
+
+Age and days remaining are deliberately not shown. The item number, the title, the quality
+and the size are what an operator reads before choosing; retention is bounded and reported
+by `/link`, which states the last day the file is available.
 
 Items past their retention time, and items deleted through the bot, are not listed. The
 object's existence is verified when a link is issued, not during a listing, so `/list`

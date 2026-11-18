@@ -10,7 +10,6 @@ result and never re-reads the index to describe it (research D-05).
 
 from __future__ import annotations
 
-import math
 from datetime import UTC, datetime
 from typing import Any
 
@@ -20,7 +19,6 @@ from ytdl.bot.commands import TIERS
 
 LIST_LIMIT = 200
 OWNER_LIMIT = 1000
-_SECONDS_PER_DAY = 86400
 
 
 def live_items(jobs: list[dict[str, Any]], now_epoch: int) -> list[dict[str, Any]]:
@@ -38,7 +36,7 @@ def render_list(
     if not live:
         return messages.NO_VIDEOS
 
-    lines = [_line(job, now_epoch) for job in live[:limit]]
+    lines = [_line(job) for job in live[:limit]]
     if len(live) > limit:
         lines.append(messages.MORE_ITEMS.format(count=len(live) - limit))
     return "\n".join(lines)
@@ -123,14 +121,12 @@ def render_history(
     return "\n".join(lines)
 
 
-def _line(job: dict[str, Any], now_epoch: int) -> str:
-    fields = " | ".join(
+def _line(job: dict[str, Any]) -> str:
+    fields = " ".join(
         (
             _title(job),
             _produced(job),
             messages.format_size(job.get("media_size_bytes")),
-            _age(job.get("media_created_at"), now_epoch),
-            _days_left(job.get("media_expires_at"), now_epoch),
         )
     )
     return f"{job['seq']}. {fields}" if _number(job.get("seq")) is not None else fields
@@ -170,20 +166,6 @@ def _media(job: dict[str, Any]) -> str:
     tier = TIERS.get(str(job.get("requested_tier")))
     extension = tier.extension if tier is not None else "mp4"
     return keys.media_key(str(job["job_id"]), str(job["video_id"]), extension)
-
-
-def _age(created_at: Any, now_epoch: int) -> str:
-    if isinstance(created_at, bool) or not isinstance(created_at, int):
-        return "0d 0h old"
-    seconds = max(0, now_epoch - created_at)
-    return f"{seconds // _SECONDS_PER_DAY}d {(seconds % _SECONDS_PER_DAY) // 3600}h old"
-
-
-def _days_left(expires_at: Any, now_epoch: int) -> str:
-    if isinstance(expires_at, bool) or not isinstance(expires_at, int):
-        return "0 days left"
-    remaining = max(0, expires_at - now_epoch)
-    return f"{math.ceil(remaining / _SECONDS_PER_DAY)} days left"
 
 
 def _outcome(item: dict[str, Any], states_by_job_id: dict[str, str]) -> str:

@@ -173,14 +173,14 @@ request.
 
 `/list`
 
-**Expected**: one line per stored item, each with a name like
-`dQw4w9WgXcQ-high-k2q1.mp4`, a title, the produced quality, the size, the age, and the
-days left.
+**Expected**: one line per stored item with its number, the title, the produced quality and
+the size, separated by spaces, for example `3. Some video title 720p 182.4 MB`. Age and
+days remaining are not shown; `/link` states the last day a file is available.
 
-`/delete <that name>`
+`/delete 3`
 
-**Expected**: `Deleted <name>.` Then `/list` no longer shows it, and the object is gone
-from S3.
+**Expected**: `Deleted 3: <name>.` Then `/list` no longer shows it, and the object is gone
+from S3. `/delete` also accepts the stored name that `/link` prints.
 
 Send the original request again.
 
