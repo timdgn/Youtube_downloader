@@ -113,6 +113,7 @@ The bot accepts exactly these commands. Each is documented in the help text and 
 |---------|-----------|
 | `/start` | Greets the operator and points to the help command. |
 | `/list` | Lists the operator's stored items, one line each, with name, source video, produced quality, size, age, and days before automatic deletion. |
+| `/link <number>` | Issues a fresh download link for the stored item carrying that number, without downloading anything again. |
 | `/delete <name>` | Deletes one stored item named as shown by the list. |
 | `/empty` | Deletes every stored item belonging to the operator, after an explicit confirmation. |
 | `/history` | Lists the operator's most recent interactions with time, request, and outcome. |
@@ -127,6 +128,7 @@ The bot accepts exactly these commands. Each is documented in the help text and 
 
 /start - Start the bot
 /list - List all your videos on the server
+/link number - Send a fresh download link
 /delete filename.zip - Delete a specific video
 /empty - Delete all videos
 /history - Show your message history
@@ -182,6 +184,7 @@ Example: "https://www.youtube.com/watch?v=example medium"
 - **FR-017**: `/info` MUST report the extraction tool version actually running in the deployment, together with the quality ceiling, the retention window, and the link lifetime.
 - **FR-018**: `/test` MUST run exactly one short test download through the real pipeline, MUST report pass, or a specific failure reason, and MUST consume the same rate budget as a normal request.
 - **FR-019**: `/test` and every other command MUST NOT loop, schedule further runs, or generate load to approach a cost ceiling. A ceiling is a guardrail, never a test target (constitution principle V).
+- **FR-020**: `/link` MUST accept the number `/list` prints, MUST issue a new download link for that item without creating a job, downloading the video again, or writing an object, MUST refuse an unknown number without issuing a link, and MUST report plainly when the item is listed but its stored file is already gone.
 - **FR-020**: The bot MUST serve only accounts on an approved list, which is configuration rather than code, and MUST refuse every other account with a reply that reveals neither the command list nor the download capability.
 - **FR-021**: The bot MUST refuse requests from group chats with a reply stating that it only works in a private chat.
 - **FR-022**: The bot MUST scope every listing, deletion, and history reply to its own requesting account, and MUST treat another account's item name as unknown rather than disclose it.

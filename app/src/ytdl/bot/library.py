@@ -70,6 +70,17 @@ def delete_numbered(
     return None if target is None else _remove(repo, store, target, now_epoch)
 
 
+def link_numbered(
+    repo: Any,
+    owner_key: str,
+    number: int,
+    now_epoch: int,
+) -> dict[str, Any] | None:
+    """Return the item carrying ``number``, or None when no live item has it."""
+    live = live_items(repo.query_owner_jobs(owner_key, OWNER_LIMIT), now_epoch)
+    return next((job for job in live if job.get("seq") == number), None)
+
+
 def _remove(repo: Any, store: Any, job: dict[str, Any], now_epoch: int) -> dict[str, Any]:
     """Remove the object first, then set the overlay; the reverse can list a dead item."""
     store.delete_object(_media(job))

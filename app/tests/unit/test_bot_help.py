@@ -32,6 +32,7 @@ def test_the_help_text_is_the_contract_block_character_for_character() -> None:
 
 def test_the_help_text_keeps_the_fixed_details() -> None:
     assert messages.HELP.startswith("📚 Available commands:")
+    assert "/link number - Send a fresh download link" in messages.HELP
     assert "/delete filename.zip - Delete a specific video" in messages.HELP
     assert "• mp3 - audio only (MP3 format)" in messages.HELP
     assert messages.HELP.endswith('Example: "https://www.youtube.com/watch?v=example medium"')

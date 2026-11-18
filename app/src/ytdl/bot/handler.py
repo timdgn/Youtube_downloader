@@ -447,6 +447,8 @@ class Bot:
 
         if command == "/list":
             self._list(update_id, sender, chat_id)
+        elif command == "/link":
+            self._link(update_id, sender, chat_id, rest)
         elif command == "/delete":
             self._delete(update_id, sender, chat_id, rest)
         elif command == "/empty":
@@ -508,6 +510,37 @@ class Bot:
         jobs = self._repo.query_owner_jobs(keys.owner_job_key(sender), library.OWNER_LIMIT)
         self._reply(chat_id, library.render_list(jobs, self._epoch()))
         self._interaction(update_id, sender, "/list", "command:list")
+
+    def _link(self, update_id: Any, sender: Any, chat_id: Any, argument: str) -> None:
+        if not argument.isdigit():
+            self._reply(chat_id, messages.LINK_USAGE)
+            self._interaction(update_id, sender, "/link", "command:link")
+            return
+
+        number = int(argument)
+        now_epoch = self._epoch()
+        job = library.link_numbered(
+            self._repo,
+            keys.owner_job_key(sender),
+            number,
+            now_epoch,
+        )
+        if job is None:
+            text = messages.NO_SUCH_NUMBER.format(number=number)
+        elif self._store.head_object(_media(job)) is None:
+            text = messages.EXPIRED
+        else:
+            text = messages.FRESH_LINK.format(
+                number=number,
+                name=keys.display_name(job),
+                quality=_produced(job),
+                expires=messages.format_minute(now_epoch + self._config.link_ttl_seconds),
+                url=self._presign(job, now_epoch),
+                available_until=messages.format_date(int(job["media_expires_at"])),
+            )
+
+        self._reply(chat_id, text)
+        self._interaction(update_id, sender, f"/link {number}", "command:link")
 
     def _delete(self, update_id: Any, sender: Any, chat_id: Any, name: str) -> None:
         if not name:

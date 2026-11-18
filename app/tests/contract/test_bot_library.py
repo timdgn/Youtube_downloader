@@ -346,6 +346,69 @@ def test_empty_confirm_with_nothing_live_says_so() -> None:
     assert telegram.messages == [{"chat_id": CHAT_ID, "text": messages.EMPTY_NOTHING}]
 
 
+# --- /link -------------------------------------------------------------------
+
+
+def test_link_signs_a_fresh_url_for_the_numbered_item_without_downloading() -> None:
+    dynamo, media = FakeDynamoRepository(), FakeMediaStore()
+    telegram, queue = FakeTelegramClient(), FakeJobQueue()
+    job = _seed(dynamo, media, index=1, tier="medium")
+
+    _bot(dynamo, media, queue=queue, telegram=telegram).handle(_event("/link 1"))
+
+    text = telegram.messages[0]["text"]
+    assert text.startswith(f"Link for 1: {keys.display_name(job)}\n")
+    assert "Quality: 720p" in text
+    assert job["media_key"] in text
+    assert queue.writes == []
+    assert media.writes == []
+
+
+def test_link_of_an_unknown_number_issues_nothing() -> None:
+    dynamo, media = FakeDynamoRepository(), FakeMediaStore()
+    telegram, queue = FakeTelegramClient(), FakeJobQueue()
+    _seed(dynamo, media, index=1)
+
+    _bot(dynamo, media, queue=queue, telegram=telegram).handle(_event("/link 99"))
+
+    assert telegram.messages == [{"chat_id": CHAT_ID, "text": "No item is numbered 99."}]
+    assert [call for call in media.calls if call[0] == "presign_get"] == []
+    assert queue.writes == []
+
+
+@pytest.mark.parametrize("text", ["/link", "/link abc", "/link 1 2"])
+def test_link_without_one_number_states_the_usage(text: str) -> None:
+    dynamo, media = FakeDynamoRepository(), FakeMediaStore()
+    telegram = FakeTelegramClient()
+    _seed(dynamo, media, index=1)
+
+    _bot(dynamo, media, telegram=telegram).handle(_event(text))
+
+    assert telegram.messages == [{"chat_id": CHAT_ID, "text": messages.LINK_USAGE}]
+
+
+def test_link_cannot_reach_another_accounts_item() -> None:
+    dynamo, media = FakeDynamoRepository(), FakeMediaStore()
+    telegram = FakeTelegramClient()
+    _seed(dynamo, media, owner=999999999, seq=1)
+
+    _bot(dynamo, media, telegram=telegram).handle(_event("/link 1"))
+
+    assert telegram.messages == [{"chat_id": CHAT_ID, "text": "No item is numbered 1."}]
+
+
+def test_link_reports_expiry_when_the_object_is_already_gone() -> None:
+    dynamo, media = FakeDynamoRepository(), FakeMediaStore()
+    telegram = FakeTelegramClient()
+    job = _seed(dynamo, media, index=1)
+    media.objects.pop(job["media_key"])
+
+    _bot(dynamo, media, telegram=telegram).handle(_event("/link 1"))
+
+    assert telegram.messages == [{"chat_id": CHAT_ID, "text": messages.EXPIRED}]
+    assert [call for call in media.calls if call[0] == "presign_get"] == []
+
+
 # --- interaction lines -------------------------------------------------------
 
 
@@ -353,6 +416,7 @@ def test_empty_confirm_with_nothing_live_says_so() -> None:
     ("text", "expected"),
     [
         ("/list", "/list"),
+        ("/link 1", "/link 1"),
         ("/delete name.mp4", "/delete name.mp4"),
         ("/empty", "/empty"),
         ("/empty confirm", "/empty confirm"),

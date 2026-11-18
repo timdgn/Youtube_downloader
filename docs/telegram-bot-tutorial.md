@@ -122,6 +122,7 @@ same list when you need it again.
 
 /start - Start the bot
 /list - List all your videos on the server
+/link number - Send a fresh download link
 /delete filename.zip - Delete a specific video
 /empty - Delete all videos
 /history - Show your message history
@@ -208,6 +209,7 @@ answers `Already working on ...` and creates nothing new.
 | Command | What it does |
 |---------|--------------|
 | `/list` | One numbered line per stored item, newest first |
+| `/link <n>` | Sends a fresh download link for the item carrying that number |
 | `/delete <n>` | Removes the item carrying that number |
 | `/delete <name>` | Removes the item with that exact name |
 | `/empty` | Reports how many items it would delete and asks you to confirm |
@@ -236,6 +238,11 @@ You receive `Deleted 3: dQw4w9WgXcQ-high-k2q1.mp4.` or `Deleted
 dQw4w9WgXcQ-high-k2q1.mp4.` and the object is gone from S3. The job record survives with a
 `deleted_at` timestamp, so history keeps meaning. Send the original request again and the
 video is downloaded afresh rather than a dead link being offered.
+
+A finished link expires after 60 minutes; the file itself stays for 7 days. `/link 3`
+signs a new URL for the same stored object, so nothing is downloaded again. It answers
+`No item is numbered 3.` when nothing live carries that number, and says the file has
+expired when the record is still listed but the object is gone.
 
 A number that matches nothing answers `No item is numbered 9.` and deletes nothing. A
 number can be skipped: a request refused by the hourly limit burns its number without

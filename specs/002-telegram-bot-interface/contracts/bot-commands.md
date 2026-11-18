@@ -20,6 +20,7 @@ them.
 
 /start - Start the bot
 /list - List all your videos on the server
+/link number - Send a fresh download link
 /delete filename.zip - Delete a specific video
 /empty - Delete all videos
 /history - Show your message history
@@ -53,6 +54,7 @@ and the storage model change together.
 |---------|-------|-------------|
 | `/start` | `Hello. Send a YouTube link with a resolution word and I will fetch it.\n\nSend /help for the full command list.` followed by the fixed help text, in one message | None |
 | `/list` | One numbered line per stored item, or `No videos are stored.` | None |
+| `/link <n>` | `Link for <n>: <name>`, then `Quality: <quality>`, then `Download (expires <HH:MM> UTC):` and the URL, then `The file stays available until <date>.` | None; a fresh link, no new job and no object written |
 | `/delete <n>` or `/delete <name>` | `Deleted <n>: <name>.` / `Deleted <name>.` / `No item is numbered <n>.` / `No item is named <name>.` | Object deleted, item marked deleted |
 | `/empty` | `This will delete N items. Reply "/empty confirm" to proceed.` | None until confirmed |
 | `/empty confirm` | `Deleted N items.` / `Deleted N items; M remain, reply "/empty confirm" again.` / `There was nothing to delete.` | Every live item up to the per-confirmation cap |
@@ -237,6 +239,36 @@ If more than 200 items are live, the reply ends with:
 ```text
 ... and N more. Delete some items to see the rest.
 ```
+
+---
+
+## `/link` format
+
+`/link <n>` signs a fresh URL for the live item numbered `<n>`, without creating a job,
+writing an object or consuming the hourly request allowance:
+
+```text
+Link for <n>: <name>
+Quality: <quality>
+
+Download (expires <HH:MM> UTC):
+<url>
+
+The file stays available until <YYYY-MM-DD>.
+```
+
+`<name>`, `<quality>` and `<YYYY-MM-DD>` are the same values `/list` shows for that item.
+The URL is a new signature with the normal link lifetime; it does not extend retention.
+
+| Input | Reply |
+|-------|-------|
+| `/link 3`, live item numbered 3 | The block above |
+| `/link` | `Use /link <number>, the number /list shows.` |
+| `/link abc` | Same usage line |
+| `/link 99`, no live item numbered 99 | `No item is numbered 99.` |
+| `/link 3`, item live but object already gone | `The stored file has expired; submit the video link again.` |
+
+The interaction is recorded as `command:link`, with the number as its text.
 
 ---
 

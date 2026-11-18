@@ -55,6 +55,16 @@ DELETED = "Deleted {name}."
 DELETED_NUMBER = "Deleted {number}: {name}."
 NO_SUCH_ITEM = "No item is named {name}."
 NO_SUCH_NUMBER = "No item is numbered {number}."
+FRESH_LINK = (
+    "Link for {number}: {name}\n"
+    "Quality: {quality}\n"
+    "\n"
+    "Download (expires {expires} UTC):\n"
+    "{url}\n"
+    "\n"
+    "The file stays available until {available_until}."
+)
+LINK_USAGE = "Use /link <number>, the number /list shows."
 EMPTY_CONFIRM = 'This will delete {count} items. Reply "/empty confirm" to proceed.'
 EMPTY_DONE = "Deleted {count} items."
 EMPTY_REMAIN = 'Deleted {count} items; {remaining} remain, reply "/empty confirm" again.'
@@ -68,6 +78,7 @@ HELP = (
     "\n"
     "/start - Start the bot\n"
     "/list - List all your videos on the server\n"
+    "/link number - Send a fresh download link\n"
     "/delete filename.zip - Delete a specific video\n"
     "/empty - Delete all videos\n"
     "/history - Show your message history\n"
