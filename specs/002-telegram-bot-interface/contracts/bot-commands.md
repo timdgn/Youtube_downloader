@@ -231,14 +231,16 @@ This bot only works in a private chat.
 One line per item, in descending creation order. Each line starts with the item's number:
 
 ```text
-<n>. <title> <produced_quality> <size>
+<n>. <title> | <produced_quality> | <size>
 ```
 
 Example:
 
 ```text
-3. Some video title 720p 182.4 MB
+3. Some video title | 720p | 182.4 MB
 ```
+
+Items are separated by one blank line, so a long list does not read as a wall of text.
 
 Numbers descend because the list is newest first. They are allocated once per account and
 never reused, so a number read here still names the same file after another download or
@@ -248,7 +250,7 @@ The stored name (`<video_id>-<tier>-<job_id last 4>.<ext>`, the label `/link` pr
 `/delete` accepts) is deliberately absent: the number identifies the item, and the name is
 a download filename rather than an identifier worth reading in a listing.
 
-Fields are separated by one space, because pipes made a short line read like a table.
+Fields are separated by a pipe between spaces, the same as the rest of the bot's text.
 
 | Field | Derivation |
 |-------|------------|

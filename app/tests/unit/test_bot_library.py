@@ -34,7 +34,7 @@ def _job(**overrides: Any) -> dict[str, Any]:
 def test_one_line_carries_the_documented_fields() -> None:
     line = render_list([_job()], NOW)
 
-    assert line == "3. Some video title 720p 182.4 MB"
+    assert line == "3. Some video title | 720p | 182.4 MB"
 
 
 def test_an_audio_item_prints_its_mp3_name_and_quality() -> None:
@@ -47,7 +47,7 @@ def test_an_audio_item_prints_its_mp3_name_and_quality() -> None:
 
     line = render_list([job], NOW)
 
-    assert line == "3. Some video title mp3 182.4 MB"
+    assert line == "3. Some video title | mp3 | 182.4 MB"
     assert ".mp3" not in line
 
 
@@ -69,7 +69,7 @@ def test_deleted_expired_and_unfinished_items_are_not_listed() -> None:
     rendered = render_list(jobs, NOW)
 
     assert len(rendered.splitlines()) == 1
-    assert rendered.startswith("3. Some video title ")
+    assert rendered.startswith("3. Some video title |")
     assert "aaaa0000000002" not in rendered
 
 
@@ -79,7 +79,7 @@ def test_the_query_order_is_preserved() -> None:
         _job(job_id="older000000002", video_title="Older video"),
     ]
 
-    lines = render_list(jobs, NOW).splitlines()
+    lines = render_list(jobs, NOW).split("\n\n")
 
     assert "Newest video" in lines[0]
     assert "Older video" in lines[1]
@@ -93,7 +93,7 @@ def test_an_empty_library_says_so() -> None:
 def test_more_than_two_hundred_live_items_states_the_remainder() -> None:
     jobs = [_job(job_id=f"job{index:011d}") for index in range(250)]
 
-    lines = render_list(jobs, NOW).splitlines()
+    lines = render_list(jobs, NOW).split("\n\n")
 
     assert len(lines) == 201
     assert lines[-1] == "... and 50 more. Delete some items to see the rest."
@@ -102,7 +102,7 @@ def test_more_than_two_hundred_live_items_states_the_remainder() -> None:
 def test_exactly_two_hundred_live_items_has_no_remainder_line() -> None:
     jobs = [_job(job_id=f"job{index:011d}") for index in range(200)]
 
-    assert len(render_list(jobs, NOW).splitlines()) == 200
+    assert len(render_list(jobs, NOW).split("\n\n")) == 200
 
 
 def test_live_items_keeps_only_what_can_be_downloaded() -> None:
@@ -122,5 +122,5 @@ def test_a_job_without_a_number_prints_without_one() -> None:
 
     line = render_list([job], NOW)
 
-    assert line.startswith("Some video title ")
+    assert line.startswith("Some video title | ")
     assert " . " not in line

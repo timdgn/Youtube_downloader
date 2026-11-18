@@ -226,7 +226,7 @@ answers `Already working on ...` and creates nothing new.
 A `/list` line looks like this:
 
 ```text
-3. Some video title 720p 182.4 MB
+3. Some video title | 720p | 182.4 MB
 ```
 
 The leading number is allocated once, when the item is created, and never reused. It is

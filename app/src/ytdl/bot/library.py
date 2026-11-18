@@ -39,7 +39,7 @@ def render_list(
     lines = [_line(job) for job in live[:limit]]
     if len(live) > limit:
         lines.append(messages.MORE_ITEMS.format(count=len(live) - limit))
-    return "\n".join(lines)
+    return "\n\n".join(lines)
 
 
 def delete_item(
@@ -122,7 +122,7 @@ def render_history(
 
 
 def _line(job: dict[str, Any]) -> str:
-    fields = " ".join(
+    fields = " | ".join(
         (
             _title(job),
             _produced(job),

@@ -173,7 +173,7 @@ Example: "https://www.youtube.com/watch?v=example medium"
 - **FR-010**: The `/help` reply MUST contain the help text fixed in the Command Surface section, complete and unaltered in wording, order, and example.
 - **FR-011**: The bot MUST answer `/start` with a greeting followed by the fixed help
   text, in one message, so a first-time operator sees the commands without asking for them.
-- **FR-012**: The `/list` reply MUST show, for each of the operator's stored items, the number reserved for that item, the source video's title, the quality actually produced and the size, separated by one space, and MUST split across messages, without loss or duplication, when one message cannot hold the list. The stored file name, the age and the days remaining MUST NOT appear: the number identifies the item, and `/link` reports the last day the file is available.
+- **FR-012**: The `/list` reply MUST show, for each of the operator's stored items, the number reserved for that item, the source video's title, the quality actually produced and the size, with fields separated by ` | ` and one blank line between items, and MUST split across messages, without loss or duplication, when one message cannot hold the list. The stored file name, the age and the days remaining MUST NOT appear: the number identifies the item, and `/link` reports the last day the file is available.
 - **FR-013**: `/delete` MUST accept either the number printed beside an item by `/list` or
   its name, MUST delete only the item so identified, MUST confirm the deletion by name, and
   MUST delete nothing when the number or name is unknown. A number MUST NOT be reused for a

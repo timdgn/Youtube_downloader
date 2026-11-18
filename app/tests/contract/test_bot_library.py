@@ -167,7 +167,7 @@ def test_list_shows_one_line_per_live_item_of_the_caller() -> None:
     _bot(dynamo, media, telegram=telegram).handle(_event("/list"))
 
     text = telegram.messages[0]["text"]
-    lines = text.splitlines()
+    lines = text.split("\n\n")
     assert len(lines) == 2
     assert any("Stored video 1" in line for line in lines)
     assert any("Stored video 2" in line for line in lines)
@@ -443,7 +443,7 @@ def test_list_prints_each_item_number_newest_first() -> None:
 
     _bot(dynamo, media, telegram=telegram).handle(_event("/list"))
 
-    lines = telegram.messages[0]["text"].splitlines()
+    lines = telegram.messages[0]["text"].split("\n\n")
     assert lines[0].startswith("2. ")
     assert lines[1].startswith("1. ")
 

@@ -174,8 +174,9 @@ request.
 `/list`
 
 **Expected**: one line per stored item with its number, the title, the produced quality and
-the size, separated by spaces, for example `3. Some video title 720p 182.4 MB`. Age and
-days remaining are not shown; `/link` states the last day a file is available.
+the size, separated by ` | `, for example `3. Some video title | 720p | 182.4 MB`, with a
+blank line between items. Age and days remaining are not shown; `/link` states the last
+day a file is available.
 
 `/delete 3`
 
