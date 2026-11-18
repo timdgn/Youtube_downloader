@@ -4,7 +4,10 @@
 #     -var-file=env/prod.tfvars -var image_tag=<git sha>
 #
 # The alarm address is the only value that must be supplied by the operator before
-# the first production submission (constitution principle V).
+# the first production submission (constitution principle V). It never lives in this
+# file: put TF_VAR_alarm_email in .env (see .env.example) or export it for the apply.
+# The variable defaults to empty, which means no subscription exists and no alarm
+# reaches anybody; setting it to "" here would override the environment instead.
 
 environment = "prod"
 aws_region  = "eu-west-3"
@@ -19,8 +22,6 @@ worker_reserved_concurrency = 2
 worker_memory_mb            = 3008
 worker_timeout_seconds      = 900
 worker_ephemeral_storage_mb = 10240
-
-alarm_email = "operator@example.invalid"
 
 # Compute runs on the Raspberry Pi: the host polls the job queue with its own
 # credentials, so the Lambda event source mapping must stay off or the two

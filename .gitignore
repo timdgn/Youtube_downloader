@@ -21,6 +21,7 @@ override.tf.json
 # Local configuration and secrets
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 config/cookies.txt

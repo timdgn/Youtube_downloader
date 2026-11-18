@@ -17,6 +17,12 @@ PI_HOST   ?= rasp
 ENV       ?=
 STATE_BUCKET_PREFIX ?= ytdl-tfstate
 
+# Operator-only values that must never be committed: the alarm address, and any
+# per-deploy override such as a cookies URI. `.env` is gitignored and its shape is
+# documented in `.env.example`; `export` hands the TF_VAR_* names to Terraform.
+-include .env
+export
+
 # Paris. Exported so every AWS CLI call in a recipe targets the same region as the
 # stack, whatever the profile's default region happens to be. The Billing alarms
 # are the one exception: they read us-east-1, where that metric is published.
@@ -126,6 +132,7 @@ bootstrap:
 
 deploy:
 	@test -n "$(ENV)" || { echo "usage: make deploy ENV=dev"; exit 1; }
+	@if [ "$(ENV)" = prod ] && [ -z "$(TF_VAR_alarm_email)" ]; then echo "prod needs TF_VAR_alarm_email (see .env.example)"; exit 1; fi
 	@test -f infra/env/$(ENV).tfvars || { echo "missing infra/env/$(ENV).tfvars"; exit 1; }
 	@test -f infra/backend/$(ENV).backend || { echo "missing infra/backend/$(ENV).backend"; exit 1; }
 	@ACCOUNT=$$(aws sts get-caller-identity --query Account --output text 2>/dev/null); \

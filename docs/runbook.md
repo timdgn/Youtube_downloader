@@ -223,6 +223,13 @@ with `-reconfigure` and apply it fresh.
 `make outputs ENV=<env>` prints an environment's outputs after re-initialising, so a stale
 backend pointer cannot silently answer for the wrong environment.
 
+**Operator-only values live in `.env`.** The alarm address is not in the repository, and
+neither is any cookies location. Copy `.env.example` to `.env`, fill it in, and `make`
+exports it: Terraform reads the `TF_VAR_*` names from there, and `make deploy ENV=prod`
+refuses to run without `TF_VAR_alarm_email`, so an apply cannot silently delete the
+subscriptions. `-var-file` outranks the environment, so a value also written in a
+`.tfvars` would win; keep these two out of the `.tfvars` files.
+
 ---
 
 ## 10. Monthly cost review
