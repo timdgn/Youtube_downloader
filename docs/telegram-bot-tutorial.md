@@ -117,6 +117,11 @@ Open your bot in Telegram and press **Start**, or send `/start`.
 Expected: the greeting, then the full command list, in one message. `/help` sends the
 same list when you need it again.
 
+Typing `/` in the chat also shows a menu of the commands, with a one-line description
+each. That menu is registered on Telegram's side by `terraform_data.telegram_commands`
+from `infra/locals.tf`; it is not the same thing as `/help`, and a command name there
+cannot carry arguments.
+
 ```text
 📚 Available commands:
 

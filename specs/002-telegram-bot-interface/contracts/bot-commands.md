@@ -68,6 +68,30 @@ Unknown commands beginning with `/` get the same last line, not the help text.
 
 ---
 
+## Menu registration
+
+The list a client shows when `/` is typed is Telegram-side state, registered with
+`setMyCommands` from the list in `infra/locals.tf` by `terraform_data.telegram_commands`.
+A command name carries no arguments, so the usage lives in its description.
+
+| Command | Description |
+|---------|-------------|
+| `start` | Start the bot |
+| `list` | List your stored videos |
+| `link` | Fresh download link for a numbered item |
+| `delete` | Delete a video by number or name |
+| `empty` | Delete all your videos |
+| `history` | Your last ten interactions |
+| `info` | yt-dlp version and limits |
+| `test` | Run one short test download |
+| `help` | Show the command list |
+
+Adding or renaming a command means editing this table, `infra/locals.tf`, `messages.HELP`
+and the help contract test together. The menu and the help text are two surfaces of one
+list, and nothing checks them against each other automatically.
+
+---
+
 ## Request grammar
 
 ```text

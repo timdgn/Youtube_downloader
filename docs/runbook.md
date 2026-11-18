@@ -268,6 +268,12 @@ The bot calls the same submission path, worker and presigner as the terminal API
 the token, the webhook secret and the allowlist from SSM in one call per webhook delivery,
 so no secret is an environment variable.
 
+The command menu a client shows when `/` is typed is registered with `setMyCommands` by
+`terraform_data.telegram_commands`, from the list in `infra/locals.tf`. It is Telegram-side
+state, so an apply refreshes it and a destroy deliberately leaves it behind. Editing a
+description re-registers it on the next apply; the menu and the `/help` text are changed
+together, since nothing compares them automatically.
+
 Its logs are in `/aws/lambda/ytdl-<env>-bot` on a Lambda deployment, and in
 `sudo docker logs ytdl` on the Raspberry Pi. Every webhook delivery writes one line with
 `event = "update"` and an `outcome`: `accepted`, `reissued`, `in_progress`,

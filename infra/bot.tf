@@ -329,6 +329,33 @@ resource "terraform_data" "telegram_webhook" {
   ]
 }
 
+# The command menu is Telegram-side state that no AWS object owns, so it is
+# registered from the same list as everything else here. The hash is a
+# replacement trigger: editing a description re-registers the menu, an
+# unchanged list runs nothing. No destroy provisioner, because a stale menu is
+# harmless and a shared token would let a dev destroy wipe the prod menu.
+resource "terraform_data" "telegram_commands" {
+  triggers_replace = jsonencode(local.bot_commands)
+
+  input = {
+    commands        = jsonencode(local.bot_commands)
+    token_parameter = local.telegram_token_parameter_name
+    region          = var.aws_region
+  }
+
+  provisioner "local-exec" {
+    command = "${path.module}/scripts/telegram-commands.sh"
+
+    environment = {
+      COMMANDS        = self.input.commands
+      TOKEN_PARAMETER = self.input.token_parameter
+      AWS_REGION      = self.input.region
+    }
+  }
+
+  depends_on = [aws_ssm_parameter.telegram_bot_token]
+}
+
 # A webhook removed out of band, or a revoked token, is otherwise silent: an
 # idle bot and a broken bot look the same. The handler answers by emitting an
 # Embedded Metric Format line, so no PutMetricData permission is needed.
